@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020", // 최신 ES 표준으로 설정
+    "module": "commonjs", // Node.js 환경에서는 commonjs 사용
+    "strict": true, // 엄격 모드 활성화
+    "esModuleInterop": true, // ES 모듈 호환성
+    "experimentalDecorators": true, // 데코레이터 사용 활성화
+    "emitDecoratorMetadata": true, // 메타데이터 생성 활성화
+    "skipLibCheck": true, // 라이브러리 타입 체크 건너뛰기
+    "forceConsistentCasingInFileNames": true, // 파일명 대소문자 일관성
+    "outDir": "./dist", // 컴파일된 파일 출력 경로
+    "rootDir": "./src" // 소스 파일 경로
+  },
+  "include": ["src/**/*"], // 포함할 파일
+  "exclude": ["node_modules", "dist"] // 제외할 파일
+}

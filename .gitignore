@@ -17,3 +17,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.iml
+
+# 빌드 결과물 제외
+dist/
