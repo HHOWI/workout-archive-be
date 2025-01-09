@@ -1,5 +1,3 @@
-// src/seeds/exercise.seed.ts
-
 import { DataSource } from "typeorm";
 import { Exercise } from "../entities/Exercise";
 

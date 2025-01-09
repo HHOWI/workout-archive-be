@@ -1,12 +1,23 @@
+// src/index.ts
+import express from "express";
+import "reflect-metadata";
 import { AppDataSource } from "./data-source";
+import userRouter from "./routes/UserRouter";
+
+const app = express();
+app.use(express.json());
+
+// 라우트 등록
+app.use("/users", userRouter);
 
 AppDataSource.initialize()
   .then(() => {
-    console.log("Database synchronized successfully!");
-    // 만약 서버를 띄우지 않고 종료만 할 거면:
-    // process.exit(0);
+    console.log("DB connected");
+    // 서버 실행
+    app.listen(3000, () => {
+      console.log("Server running on http://localhost:3000");
+    });
   })
-  .catch((error) => {
-    console.error("Database connection error:", error);
-    // process.exit(1);
+  .catch((err) => {
+    console.error("DB init error:", err);
   });
