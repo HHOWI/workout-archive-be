@@ -1,72 +1,134 @@
-import { Request, Response } from "express";
+import { Request, Response, NextFunction } from "express";
 import { UserService } from "../services/UserService";
+import { CustomError } from "../utils/CustomError";
 
 const userService = new UserService();
 
 export class UserController {
   // GET /users
-  static async getAllUsers(req: Request, res: Response) {
+  static getAllUsers = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const users = await userService.findAll();
-      return res.json(users);
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      res.json(users);
+    } catch (err) {
+      next(
+        new CustomError(
+          "Failed to fetch users",
+          500,
+          "UserController.getAllUsers"
+        )
+      );
     }
-  }
+  };
 
   // GET /users/:id
-  static async getUserById(req: Request, res: Response) {
+  static getUserById = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     const userSEQ = Number(req.params.id);
     try {
       const user = await userService.findById(userSEQ);
       if (!user) {
-        return res.status(404).json({ message: "User not found" });
+        next(
+          new CustomError("User not found", 404, "UserController.getUserById")
+        );
+        return;
       }
-      return res.json(user);
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      res.json(user);
+    } catch (err) {
+      next(
+        new CustomError(
+          "Failed to fetch user",
+          500,
+          "UserController.getUserById"
+        )
+      );
     }
-  }
+  };
 
   // POST /users
-  static async createUser(req: Request, res: Response) {
+  static createUser = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     const { id, pw, email, nickname } = req.body;
     try {
       const newUser = await userService.createUser({ id, pw, email, nickname });
-      return res.status(201).json(newUser);
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      res.status(201).json(newUser);
+    } catch (err) {
+      next(
+        new CustomError(
+          "Failed to create user",
+          500,
+          "UserController.createUser"
+        )
+      );
     }
-  }
+  };
 
   // PUT /users/:id
-  static async updateUser(req: Request, res: Response) {
+  static updateUser = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     const userSEQ = Number(req.params.id);
-    const dto = req.body; // { pw, email, nickname } 등
+    const dto = req.body;
     try {
-      const updated = await userService.updateUser(userSEQ, dto);
-      if (!updated) {
-        return res
-          .status(404)
-          .json({ message: "User not found or no changes" });
+      const updatedUser = await userService.updateUser(userSEQ, dto);
+      if (!updatedUser) {
+        next(
+          new CustomError(
+            "User not found or no changes",
+            404,
+            "UserController.updateUser"
+          )
+        );
+        return;
       }
-      return res.json(updated);
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      res.json(updatedUser);
+    } catch (err) {
+      next(
+        new CustomError(
+          "Failed to update user",
+          500,
+          "UserController.updateUser"
+        )
+      );
     }
-  }
+  };
 
   // DELETE /users/:id
-  static async deleteUser(req: Request, res: Response) {
+  static deleteUser = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     const userSEQ = Number(req.params.id);
     try {
-      const ok = await userService.deleteUser(userSEQ);
-      if (!ok) {
-        return res.status(404).json({ message: "User not found" });
+      const isDeleted = await userService.deleteUser(userSEQ);
+      if (!isDeleted) {
+        next(
+          new CustomError("User not found", 404, "UserController.deleteUser")
+        );
+        return;
       }
-      return res.status(204).send();
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      res.status(204).send();
+    } catch (err) {
+      next(
+        new CustomError(
+          "Failed to delete user",
+          500,
+          "UserController.deleteUser"
+        )
+      );
     }
-  }
+  };
 }
