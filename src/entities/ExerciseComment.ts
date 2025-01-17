@@ -1,18 +1,18 @@
 import {
-  Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  ManyToOne,
+  Entity,
   JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
 } from "typeorm";
 import { User } from "./User";
 import { Exercise } from "./Exercise";
 
-@Entity("USER_EXERCISE_MEMO")
-export class UserExerciseMemo {
-  @PrimaryGeneratedColumn({ name: "USER_EXERCISE_MEMO_SEQ" })
-  userExerciseMemoSEQ!: number;
+@Entity("EXERCISE_COMMENT")
+export class ExerciseComment {
+  @PrimaryGeneratedColumn({ name: "EXERCISE_COMMENT_SEQ" })
+  exerciseCommentSeq!: number;
 
   @ManyToOne(() => User, { onDelete: "CASCADE" })
   @JoinColumn({ name: "USER_SEQ" })
@@ -23,18 +23,24 @@ export class UserExerciseMemo {
   exercise!: Exercise;
 
   @Column({
-    name: "MEMO_CONTENT",
+    name: "COMMENT_CONTENT",
     type: "varchar",
     length: 4000,
     nullable: false,
   })
-  memoContent!: string;
+  commentContent!: string;
+
+  @Column({ name: "COMMENT_LIKES", type: "number", default: () => 0 })
+  commentLikes!: number;
 
   @CreateDateColumn({
-    name: "CREATED_AT",
+    name: "COMMENT_CREATED_AT",
     type: "timestamp",
     default: () => "CURRENT_TIMESTAMP",
     nullable: false,
   })
-  createdAt!: Date;
+  commentCreatedAt!: Date;
+
+  @Column({ name: "PARENT_COMMENT_SEQ", type: "number", default: null })
+  parentCommentSeq!: number | null;
 }

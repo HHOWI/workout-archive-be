@@ -5,21 +5,21 @@ export class UserService {
   private userRepo = AppDataSource.getRepository(User);
 
   // (1) 모든 사용자 조회
-  findAll = async (): Promise<User[]> => {
+  findAllUser = async (): Promise<User[]> => {
     return await this.userRepo.find();
   };
 
-  // (2) 특정 사용자 조회
-  findById = async (userSEQ: number): Promise<User | null> => {
-    return await this.userRepo.findOneBy({ userSEQ });
+  // 닉네임으로 조회
+  findByNickname = async (userNickname: string): Promise<User | null> => {
+    return await this.userRepo.findOneBy({ userNickname });
   };
 
-  // (3) 사용자 생성
+  // (3) 회원가입
   createUser = async (dto: {
-    id: string;
-    pw: string;
-    email: string;
-    nickname: string;
+    userId: string;
+    userPw: string;
+    userEmail: string;
+    userNickname: string;
   }): Promise<User> => {
     const newUser = this.userRepo.create(dto);
     return await this.userRepo.save(newUser);
@@ -27,10 +27,10 @@ export class UserService {
 
   // (4) 사용자 업데이트
   updateUser = async (
-    userSEQ: number,
+    userSeq: number,
     dto: Partial<User>
   ): Promise<User | null> => {
-    const user = await this.userRepo.findOneBy({ userSEQ });
+    const user = await this.userRepo.findOneBy({ userSeq });
     if (!user) return null;
 
     this.userRepo.merge(user, dto);
@@ -38,8 +38,8 @@ export class UserService {
   };
 
   // (5) 사용자 삭제
-  deleteUser = async (userSEQ: number): Promise<boolean> => {
-    const user = await this.userRepo.findOneBy({ userSEQ });
+  deleteUser = async (userSeq: number): Promise<boolean> => {
+    const user = await this.userRepo.findOneBy({ userSeq });
     if (!user) return false;
 
     await this.userRepo.remove(user);

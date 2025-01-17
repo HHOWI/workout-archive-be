@@ -11,7 +11,7 @@ import { User } from "./User";
 @Entity("USER_INFO_RECORD")
 export class UserInfoRecord {
   @PrimaryGeneratedColumn({ name: "USER_INFO_RECORD_SEQ" })
-  userInfoRecordSEQ!: number;
+  userInfoRecordSeq!: number;
 
   @ManyToOne(() => User, { onDelete: "CASCADE" })
   @JoinColumn({ name: "USER_SEQ" })

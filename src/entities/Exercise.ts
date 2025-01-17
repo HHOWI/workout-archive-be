@@ -3,7 +3,7 @@ import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
 @Entity("EXERCISE")
 export class Exercise {
   @PrimaryGeneratedColumn({ name: "EXERCISE_SEQ" })
-  exerciseSEQ!: number;
+  exerciseSeq!: number;
 
   @Column({
     name: "EXERCISE_TYPE",
@@ -11,7 +11,7 @@ export class Exercise {
     length: 20,
     nullable: false,
   })
-  exerciseType!: string; // e.g. "ANAEROBIC", "AEROBIC"
+  exerciseType!: string;
 
   @Column({
     name: "EXERCISE_NAME",

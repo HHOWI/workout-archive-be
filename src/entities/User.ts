@@ -8,25 +8,30 @@ import {
 @Entity("USER")
 export class User {
   @PrimaryGeneratedColumn({ name: "USER_SEQ" })
-  userSEQ!: number;
+  userSeq!: number;
 
-  @Column({ name: "ID", type: "varchar", length: 50, nullable: false })
-  id!: string;
+  @Column({ name: "USER_ID", type: "varchar", length: 50, nullable: false })
+  userId!: string;
 
-  @Column({ name: "PW", type: "varchar", length: 255, nullable: false })
-  pw!: string;
+  @Column({ name: "USER_PW", type: "varchar", length: 255, nullable: false })
+  userPw!: string;
 
-  @Column({ name: "EMAIL", type: "varchar", length: 100, nullable: false })
-  email!: string;
+  @Column({ name: "USER_EMAIL", type: "varchar", length: 100, nullable: false })
+  userEmail!: string;
 
-  @Column({ name: "NICKNAME", type: "varchar", length: 50, nullable: false })
-  nickname!: string;
+  @Column({
+    name: "USER_NICKNAME",
+    type: "varchar",
+    length: 50,
+    nullable: false,
+  })
+  userNickname!: string;
 
   @CreateDateColumn({
-    name: "CREATED_AT",
+    name: "USER_CREATED_AT",
     type: "timestamp",
     default: () => "CURRENT_TIMESTAMP",
     nullable: false,
   })
-  createdAt!: Date;
+  userCreatedAt!: Date;
 }
