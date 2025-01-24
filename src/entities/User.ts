@@ -27,6 +27,14 @@ export class User {
   })
   userNickname!: string;
 
+  @Column({
+    name: "IS_VERIFIED",
+    type: "boolean",
+    default: false,
+    nullable: false,
+  })
+  isVerified!: boolean;
+
   @CreateDateColumn({
     name: "USER_CREATED_AT",
     type: "timestamp",

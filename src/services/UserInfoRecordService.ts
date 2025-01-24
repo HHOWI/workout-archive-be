@@ -1,4 +1,5 @@
 import { AppDataSource } from "../data-source";
+import { UserInfoRecordDTO } from "../dtos/UserInfoRecordDTO";
 import { User } from "../entities/User";
 import { UserInfoRecord } from "../entities/UserInfoRecord";
 
@@ -9,7 +10,7 @@ export class UserInfoRecordService {
   // 유저 닉네임으로 UserInfoRecord 정보 가져오기
   findUserInfoByNickname = async (
     userNickname: string
-  ): Promise<{ userNickname: string; records: UserInfoRecord[] } | null> => {
+  ): Promise<Partial<UserInfoRecordDTO>[] | null> => {
     // 닉네임으로 유저 검색
     const user = await this.userRepo.findOne({
       where: { userNickname },
@@ -25,10 +26,18 @@ export class UserInfoRecordService {
       relations: ["user"], // 관계를 명시적으로 포함
     });
 
-    // 결과 반환 (유저 닉네임과 기록 정보)
-    return {
-      userNickname: user.userNickname,
-      records,
-    };
+    // 필요한 필드만 추출해 DTO에 매핑
+    const filteredRecords = records.map(
+      (record) =>
+        new UserInfoRecordDTO({
+          userInfoRecordSeq: record.userInfoRecordSeq,
+          bodyWeight: record.bodyWeight,
+          muscleMass: record.muscleMass,
+          bodyFat: record.bodyFat,
+          recordDate: record.recordDate,
+        })
+    );
+
+    return filteredRecords;
   };
 }

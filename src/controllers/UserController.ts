@@ -4,11 +4,7 @@ import { UserService } from "../services/UserService";
 import { CustomError } from "../utils/CustomError";
 
 export class UserController {
-  private userService: UserService;
-
-  constructor() {
-    this.userService = new UserService();
-  }
+  private userService = new UserService();
 
   // GET /users
   getAllUsers = asyncHandler(async (req: Request, res: Response) => {
