@@ -3,14 +3,12 @@ import "reflect-metadata";
 import { AppDataSource } from "./data-source";
 import userRouter from "./routes/UserRouter";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler";
-import authRouter from "./routes/AuthRouter";
 
 const app = express();
 app.use(express.json());
 
 // 라우터 등록
 app.use("/users", userRouter);
-app.use("/auth", authRouter);
 
 // 글로벌 에러 처리기 등록
 app.use(globalErrorHandler);

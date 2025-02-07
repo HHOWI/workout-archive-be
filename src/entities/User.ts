@@ -29,11 +29,11 @@ export class User {
 
   @Column({
     name: "IS_VERIFIED",
-    type: "boolean",
-    default: false,
+    type: "number",
+    default: 0, // 0 = false, 1 = true
     nullable: false,
   })
-  isVerified!: boolean;
+  isVerified!: number;
 
   @CreateDateColumn({
     name: "USER_CREATED_AT",

@@ -7,11 +7,12 @@ import {
   JoinColumn,
 } from "typeorm";
 import { User } from "./User";
+import { WorkoutPlace } from "./WorkoutPlace";
 
-@Entity("WORK_OUT_OF_THE_DAY")
+@Entity("WORKOUT_OF_THE_DAY")
 export class WorkoutOfTheDay {
   @PrimaryGeneratedColumn({ name: "WORKOUT_OF_THE_DAY_SEQ" })
-  WorkoutOfTheDaySeq!: number;
+  workoutOfTheDaySeq!: number;
 
   @ManyToOne(() => User, { onDelete: "CASCADE" })
   @JoinColumn({ name: "USER_SEQ" })
@@ -33,4 +34,8 @@ export class WorkoutOfTheDay {
     nullable: false,
   })
   recordDate!: Date;
+
+  @ManyToOne(() => WorkoutPlace, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "WORKOUT_PLACE_SEQ" })
+  workoutPlace!: WorkoutPlace;
 }
