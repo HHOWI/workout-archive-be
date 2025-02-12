@@ -1,11 +1,8 @@
-export class UserInfoRecordDTO {
-  userInfoRecordSeq!: number;
-  bodyWeight!: number | null;
-  muscleMass!: number | null;
-  bodyFat!: number | null;
-  recordDate!: Date;
-
-  constructor(entity: Partial<UserInfoRecordDTO>) {
-    Object.assign(this, entity);
-  }
+export interface UserInfoRecordDTO {
+  userInfoRecordSeq?: number;
+  userId?: String;
+  bodyWeight?: number | null;
+  muscleMass?: number | null;
+  bodyFat?: number | null;
+  recordDate?: Date;
 }

@@ -42,4 +42,12 @@ export class User {
     nullable: false,
   })
   userCreatedAt!: Date;
+
+  @Column({
+    name: "VERIFICATION_TOKEN",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  verificationToken!: string | null;
 }
