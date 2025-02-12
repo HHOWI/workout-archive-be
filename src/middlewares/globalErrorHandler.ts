@@ -1,8 +1,7 @@
-// src/middlewares/globalErrorHandler.ts
 import { Request, Response, NextFunction } from "express";
 import { CustomError } from "../utils/CustomError";
 
-export const globalErrorHandler = (
+export const GlobalErrorHandler = (
   err: CustomError | any,
   req: Request,
   res: Response,

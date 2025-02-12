@@ -2,7 +2,8 @@ import express from "express";
 import "reflect-metadata";
 import { AppDataSource } from "./data-source";
 import userRouter from "./routes/UserRouter";
-import { globalErrorHandler } from "./middlewares/globalErrorHandler";
+import "./jobs/CleanupUnverifiedUsers";
+import { GlobalErrorHandler } from "./middlewares/globalErrorHandler";
 
 const app = express();
 app.use(express.json());
@@ -11,7 +12,7 @@ app.use(express.json());
 app.use("/users", userRouter);
 
 // 글로벌 에러 처리기 등록
-app.use(globalErrorHandler);
+app.use(GlobalErrorHandler);
 
 AppDataSource.initialize()
   .then(() => {

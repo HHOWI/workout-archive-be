@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as xml2js from "xml2js";
 
-export const seedWorkoutPlaces = async (dataSource: DataSource) => {
+export const WorkoutPlaceSeed = async (dataSource: DataSource) => {
   const workoutPlaceRepo = dataSource.getRepository(WorkoutPlace);
 
   // XML 파일 경로 설정 (프로젝트 루트에 위치한 WorkoutPlaceData.xml)

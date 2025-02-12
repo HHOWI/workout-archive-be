@@ -83,7 +83,7 @@ const initialExercises = [
   { exerciseType: "이두", exerciseName: "리버스 그립 바벨 바이셉스 컬" },
 ];
 
-export const seedExercises = async (dataSource: DataSource) => {
+export const ExerciseSeed = async (dataSource: DataSource) => {
   const exerciseRepo = dataSource.getRepository(Exercise);
 
   for (const item of initialExercises) {
