@@ -144,4 +144,28 @@ export class UserController {
     }
     res.json({ message: "이메일 인증이 완료되었습니다." });
   });
+
+  // POST /users/login (로그인 엔드포인트)
+  public loginUser = asyncHandler(async (req: Request, res: Response) => {
+    const { userId, userPw } = req.body;
+    if (!userId || !userPw) {
+      throw new CustomError(
+        "모든 필드를 입력해야 합니다.",
+        400,
+        "UserController.loginUser"
+      );
+    }
+
+    // JWT 토큰 발급 포함 로그인 처리
+    const { token, user } = await this.userService.loginUser({
+      userId,
+      userPw,
+    });
+
+    res.json({
+      message: "로그인 성공",
+      token,
+      userSeq: user.userSeq,
+    });
+  });
 }

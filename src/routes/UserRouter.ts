@@ -10,5 +10,6 @@ router.get("/check-nickname", userController.checkUserNickname);
 router.get("/check-email", userController.checkUserEmail);
 router.post("/register", userController.registerUser);
 router.get("/verify-email", userController.verifyEmail);
+router.post("/login", userController.loginUser);
 
 export default router;

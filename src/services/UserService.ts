@@ -5,6 +5,8 @@ import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { Repository } from "typeorm";
 import { UserDTO } from "../dtos/UserDTO";
+import { CustomError } from "../utils/CustomError";
+import jwt from "jsonwebtoken";
 
 export class UserService {
   private userRepo: Repository<User>;
@@ -67,7 +69,11 @@ export class UserService {
   // 회원가입 처리: 비밀번호 해싱, 인증 토큰 생성, DB 저장, 이메일 발송
   public async registerUser(data: UserDTO): Promise<User> {
     if (!data.userId || !data.userPw || !data.userNickname || !data.userEmail) {
-      throw new Error("모든 필드를 입력해야 합니다.");
+      throw new CustomError(
+        "모든 필드를 입력해야 합니다.",
+        400,
+        "UserService.registerUser"
+      );
     }
 
     // 비밀번호 해싱
@@ -130,5 +136,59 @@ export class UserService {
     user.verificationToken = null;
     await this.userRepo.save(user);
     return true;
+  }
+
+  // 로그인 기능: 아이디와 비밀번호 확인, 이메일 인증 상태 체크, JWT 토큰 발급
+  public async loginUser(data: {
+    userId: string;
+    userPw: string;
+  }): Promise<{ token: string; user: User }> {
+    if (!data.userId || !data.userPw) {
+      throw new CustomError(
+        "모든 필드를 입력해야 합니다.",
+        400,
+        "UserService.loginUser"
+      );
+    }
+
+    // 아이디로 사용자 조회
+    const user = await this.userRepo.findOne({
+      where: { userId: data.userId },
+    });
+    if (!user) {
+      throw new CustomError(
+        "Invalid login: 사용자 정보가 없습니다.",
+        401,
+        "UserService.loginUser"
+      );
+    }
+
+    // 비밀번호 비교
+    const isValidPassword = await bcrypt.compare(data.userPw, user.userPw);
+    if (!isValidPassword) {
+      throw new CustomError(
+        "Invalid login: 비밀번호가 틀렸습니다.",
+        401,
+        "UserService.loginUser"
+      );
+    }
+
+    // 이메일 인증 여부 확인
+    if (user.isVerified === 0) {
+      throw new CustomError(
+        "이메일 인증이 완료되지 않은 계정입니다.",
+        401,
+        "UserService.loginUser"
+      );
+    }
+
+    // JWT 토큰 생성 (JWT_SECRET 환경 변수가 필요함)
+    const token = jwt.sign(
+      { userSeq: user.userSeq, userId: user.userId },
+      process.env.JWT_SECRET as string,
+      { expiresIn: "1h" }
+    );
+
+    return { token, user };
   }
 }
