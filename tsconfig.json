@@ -11,6 +11,6 @@
     "outDir": "./dist", // 컴파일된 파일 출력 경로
     "rootDir": "./src" // 소스 파일 경로
   },
-  "include": ["src/**/*"], // 포함할 파일
+  "include": ["src/**/*", "scripts"], // 포함할 파일
   "exclude": ["node_modules", "dist"] // 제외할 파일
 }
