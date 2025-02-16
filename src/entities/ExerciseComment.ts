@@ -4,6 +4,7 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { User } from "./User";
@@ -41,6 +42,14 @@ export class ExerciseComment {
   })
   commentCreatedAt!: Date;
 
-  @Column({ name: "PARENT_COMMENT_SEQ", type: "number", default: null })
-  parentCommentSeq!: number | null;
+  @ManyToOne(() => ExerciseComment, (comment) => comment.childComments, {
+    onDelete: "CASCADE", // 부모 삭제 시 자식도 삭제
+    nullable: true,
+  })
+  @JoinColumn({ name: "PARENT_COMMENT_SEQ" })
+  parentComment!: ExerciseComment | null;
+
+  // 자식 댓글 목록
+  @OneToMany(() => ExerciseComment, (comment) => comment.parentComment)
+  childComments!: ExerciseComment[];
 }

@@ -1,10 +1,10 @@
 export class CustomError extends Error {
-  status: number;
-  location: string;
-
-  constructor(message: string, status: number, location: string) {
+  constructor(
+    public message: string,
+    public status: number = 500,
+    public location: string = "unknown" // 에러 발생 위치
+  ) {
     super(message);
-    this.status = status;
-    this.location = location;
+    Object.setPrototypeOf(this, CustomError.prototype);
   }
 }

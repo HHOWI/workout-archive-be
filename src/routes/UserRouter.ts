@@ -1,15 +1,14 @@
-// src/routes/UserRouter.ts
 import { Router } from "express";
 import { UserController } from "../controllers/UserController";
 
-const router = Router();
+const UserRouter = Router();
 const userController = new UserController();
 
-router.get("/check-id", userController.checkUserId);
-router.get("/check-nickname", userController.checkUserNickname);
-router.get("/check-email", userController.checkUserEmail);
-router.post("/register", userController.registerUser);
-router.get("/verify-email", userController.verifyEmail);
-router.post("/login", userController.loginUser);
+UserRouter.get("/check-id", userController.checkUserId);
+UserRouter.get("/check-nickname", userController.checkUserNickname);
+UserRouter.get("/check-email", userController.checkUserEmail);
+UserRouter.post("/register", userController.registerUser);
+UserRouter.get("/verify-email", userController.verifyEmail);
+UserRouter.post("/login", userController.loginUser);
 
-export default router;
+export default UserRouter;

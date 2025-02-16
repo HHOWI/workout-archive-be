@@ -2,15 +2,32 @@ import { Request, Response, NextFunction } from "express";
 import { CustomError } from "../utils/CustomError";
 
 export const GlobalErrorHandler = (
-  err: CustomError | any,
+  err: Error,
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  console.error("Error occurred at:", err.location);
-  console.error("Error Message:", err.message);
-  res.status(err.status || 500).json({
-    message: err.message || "Internal Server Error",
-    location: err.location || "Unknown location",
-  });
+  // 로그에 에러 위치와 메시지 기록
+  console.error(
+    `[ERROR] Location: ${
+      err instanceof CustomError ? err.location : "unknown"
+    }`,
+    err
+  );
+
+  // 클라이언트 응답
+  if (err instanceof CustomError) {
+    res.status(err.status).json({
+      error: {
+        message: err.message,
+        ...(process.env.NODE_ENV === "development" && {
+          location: err.location,
+        }), // 오류 위치 전달 (개발용)
+      },
+    });
+  } else {
+    res.status(500).json({
+      error: { message: "서버 내부 오류" },
+    });
+  }
 };

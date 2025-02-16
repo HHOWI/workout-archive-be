@@ -1,6 +1,6 @@
 import oracledb from "oracledb";
 
-const dbConfig = {
+const DbConfig = {
   user: "woa", // 생성한 사용자 이름
   password: "1234", // 사용자 비밀번호
   connectString: "localhost:1521/xe", // 오라클 연결 문자열
@@ -8,7 +8,7 @@ const dbConfig = {
 
 export async function getConnection() {
   try {
-    const connection = await oracledb.getConnection(dbConfig);
+    const connection = await oracledb.getConnection(DbConfig);
     console.log("Successfully connected to Oracle Database!");
     return connection;
   } catch (err) {

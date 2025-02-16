@@ -1,10 +1,11 @@
 import express from "express";
 import "reflect-metadata";
 import { AppDataSource } from "./data-source";
-import userRouter from "./routes/UserRouter";
 import "./jobs/CleanupUnverifiedUsers";
 import { GlobalErrorHandler } from "./middlewares/GlobalErrorHandler";
 import cors from "cors";
+import UserRouter from "./routes/UserRouter";
+import ExerciseRouter from "./routes/ExerciseRouter";
 
 const app = express();
 
@@ -18,7 +19,8 @@ app.use(
 app.use(express.json());
 
 // 라우터 등록
-app.use("/users", userRouter);
+app.use("/users", UserRouter);
+app.use("/exercises", ExerciseRouter);
 
 // 글로벌 에러 처리기 등록
 app.use(GlobalErrorHandler);
