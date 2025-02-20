@@ -1,9 +1,10 @@
 import oracledb from "oracledb";
 
 const DbConfig = {
-  user: "woa", // 생성한 사용자 이름
-  password: "1234", // 사용자 비밀번호
-  connectString: "localhost:1521/xe", // 오라클 연결 문자열
+  user: process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  connectString:
+    process.env.DB_HOST + ":" + process.env.DB_PORT + "/" + process.env.DB_SID,
 };
 
 export async function getConnection() {
