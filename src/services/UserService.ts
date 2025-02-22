@@ -7,7 +7,7 @@ import { Repository } from "typeorm";
 import { UserDTO } from "../dtos/UserDTO";
 import { CustomError } from "../utils/CustomError";
 import jwt from "jsonwebtoken";
-import { ErrorDecorator } from "../decorators/ErrorDecorator"; // 데코레이터 추가
+import { ErrorDecorator } from "../decorators/ErrorDecorator";
 
 export class UserService {
   private userRepo: Repository<User>;
@@ -105,7 +105,7 @@ export class UserService {
       auth: { user: process.env.EMAIL_USER!, pass: process.env.EMAIL_PASS! },
     });
 
-    const verifyUrl = `http://localhost:3000/users/verify-email?token=${token}`;
+    const verifyUrl = `${process.env.FRONT_URL}/verify-email?token=${token}`;
 
     await transporter.sendMail({
       from: '"Workout Archive" <no-reply@yourdomain.com>',
@@ -118,10 +118,22 @@ export class UserService {
   // 이메일 인증 처리
   @ErrorDecorator("UserService.verifyEmail")
   async verifyEmail(token: string): Promise<void> {
+    // URL 디코딩
+    const decodedToken = decodeURIComponent(token);
+
     const user = await this.userRepo.findOne({
-      where: { verificationToken: token },
+      where: {
+        verificationToken: decodedToken,
+        isVerified: 0, // 아직 인증되지 않은 사용자만 검색
+      },
     });
-    if (!user) throw new CustomError("유효하지 않은 토큰", 400);
+
+    if (!user) {
+      throw new CustomError(
+        "유효하지 않은 토큰이거나 이미 인증된 사용자입니다.",
+        400
+      );
+    }
 
     user.isVerified = 1;
     user.verificationToken = null;

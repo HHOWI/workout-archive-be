@@ -28,6 +28,14 @@ export class User {
   userNickname!: string;
 
   @Column({
+    name: "PROFILE_IMAGE_URL",
+    type: "varchar",
+    length: 255,
+    nullable: true,
+  })
+  profileImageUrl?: string;
+
+  @Column({
     name: "IS_VERIFIED",
     type: "number",
     default: 0, // 0 = false, 1 = true

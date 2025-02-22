@@ -35,7 +35,7 @@ export class UserController {
     res.status(204).send();
   });
 
-  // GET /api/users/check-id?userId=...
+  // GET /users/check-id?userId=...
   public checkUserId = asyncHandler(async (req: Request, res: Response) => {
     const { userId } = req.query;
     if (!userId || typeof userId !== "string") {
@@ -45,7 +45,7 @@ export class UserController {
     res.json({ duplicated });
   });
 
-  // GET /api/users/check-nickname?userNickname=...
+  // GET /users/check-nickname?userNickname=...
   public checkUserNickname = asyncHandler(
     async (req: Request, res: Response) => {
       const { userNickname } = req.query;
@@ -59,7 +59,7 @@ export class UserController {
     }
   );
 
-  // GET /api/users/check-email?userEmail=...
+  // GET /users/check-email?userEmail=...
   public checkUserEmail = asyncHandler(async (req: Request, res: Response) => {
     const { userEmail } = req.query;
     if (!userEmail || typeof userEmail !== "string") {
@@ -69,7 +69,7 @@ export class UserController {
     res.json({ duplicated });
   });
 
-  // POST /api/users/register
+  // POST /users/register
   public registerUser = asyncHandler(async (req: Request, res: Response) => {
     const { userId, userPw, userNickname, userEmail } = req.body;
     const newUser = await this.userService.registerUser({
@@ -84,7 +84,7 @@ export class UserController {
     });
   });
 
-  // GET /api/users/verify-email?token=...
+  // GET /users/verify-email
   public verifyEmail = asyncHandler(async (req: Request, res: Response) => {
     const { token } = req.query;
     if (!token || typeof token !== "string") throw new Error("토큰 필요");
