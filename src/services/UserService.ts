@@ -94,6 +94,7 @@ export class UserService {
   }
 
   // 이메일 발송
+  @ErrorDecorator("UserService.sendVerificationEmail")
   private async sendVerificationEmail(
     to: string,
     token: string
@@ -111,33 +112,25 @@ export class UserService {
       from: '"Workout Archive" <no-reply@yourdomain.com>',
       to,
       subject: "이메일 인증 요청",
-      html: `<a href="${verifyUrl}">이메일 인증하기</a>`,
+      text: `다음 링크를 클릭하여 이메일 인증을 완료해주세요: ${verifyUrl}`,
+      html: `<p>다음 링크를 클릭하여 이메일 인증을 완료해주세요: <a href="${verifyUrl}">이메일 인증하기</a></p>`,
     });
   }
 
   // 이메일 인증 처리
   @ErrorDecorator("UserService.verifyEmail")
   async verifyEmail(token: string): Promise<void> {
-    // URL 디코딩
-    const decodedToken = decodeURIComponent(token);
+    const result = await this.userRepo.update(
+      { verificationToken: token },
+      { isVerified: 1, verificationToken: null }
+    );
 
-    const user = await this.userRepo.findOne({
-      where: {
-        verificationToken: decodedToken,
-        isVerified: 0, // 아직 인증되지 않은 사용자만 검색
-      },
-    });
-
-    if (!user) {
+    if (result.affected === 0) {
       throw new CustomError(
         "유효하지 않은 토큰이거나 이미 인증된 사용자입니다.",
         400
       );
     }
-
-    user.isVerified = 1;
-    user.verificationToken = null;
-    await this.userRepo.save(user);
   }
 
   // 로그인 기능
