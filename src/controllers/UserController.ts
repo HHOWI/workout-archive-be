@@ -2,6 +2,7 @@ import asyncHandler from "express-async-handler";
 import { Request, Response } from "express";
 import { UserService } from "../services/UserService";
 import { CustomError } from "../utils/customError";
+import { UserDTO } from "../dtos/UserDTO";
 
 export class UserController {
   private userService = new UserService();
@@ -95,12 +96,21 @@ export class UserController {
 
   // POST /users/login
   public loginUser = asyncHandler(async (req: Request, res: Response) => {
-    const { userId, userPw } = req.body;
-    const { token, user } = await this.userService.loginUser({
-      userId,
-      userPw,
+    const userDTO: UserDTO = req.body;
+    const { token, userDTO: responseUserDTO } =
+      await this.userService.loginUser(userDTO);
+
+    // HttpOnly 쿠키 설정
+    res.cookie("auth_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: Number(process.env.MAX_COOKIE_AGE),
+      path: "/",
     });
-    res.json({ token, userSeq: user.userSeq });
+
+    // 필요한 정보만 반환
+    res.json(responseUserDTO);
   });
 
   // POST /users/profile-image
@@ -118,4 +128,14 @@ export class UserController {
       res.json({ imageUrl });
     }
   );
+
+  // POST /users/logout
+  public logoutUser = asyncHandler(async (req: Request, res: Response) => {
+    res.cookie("auth_token", "", {
+      httpOnly: true,
+      expires: new Date(0),
+      path: "/",
+    });
+    res.json({ message: "로그아웃 되었습니다." });
+  });
 }

@@ -161,17 +161,14 @@ export class UserService {
 
   // 로그인 기능
   @ErrorDecorator("UserService.loginUser")
-  async loginUser(data: {
-    userId: string;
-    userPw: string;
-  }): Promise<{ token: string; user: User }> {
+  async loginUser(data: UserDTO): Promise<{ token: string; userDTO: UserDTO }> {
     if (!data.userId || !data.userPw) {
       throw new CustomError("모든 필드를 입력해야 합니다.", 400);
     }
 
-    const user = await this.userRepo.findOne({
+    const user: User | null = await this.userRepo.findOne({
       where: { userId: data.userId },
-      select: ["userSeq", "userId", "userPw", "isVerified"],
+      select: ["userSeq", "userPw", "isVerified", "userNickname"],
     });
 
     if (!user) throw new CustomError("잘못된 인증 정보", 401);
@@ -179,13 +176,15 @@ export class UserService {
       throw new CustomError("잘못된 인증 정보", 401);
     if (user.isVerified === 0) throw new CustomError("이메일 인증 필요", 403);
 
-    const token = jwt.sign(
-      { userSeq: user.userSeq, userId: user.userId },
-      process.env.JWT_SECRET!,
-      { expiresIn: "1h" }
-    );
+    const token = jwt.sign({ userSeq: user.userSeq }, process.env.JWT_SECRET!, {
+      expiresIn: "1h",
+    });
 
-    return { token, user };
+    const userDTO: UserDTO = {
+      userSeq: user.userSeq,
+      userNickname: user.userNickname,
+    };
+    return { token, userDTO };
   }
 
   @ErrorDecorator("UserService.updateProfileImage")
@@ -193,7 +192,6 @@ export class UserService {
     userSeq: number,
     file: Express.Multer.File
   ): Promise<string> {
-    // 이미지 저장 로직 (S3 또는 로컬 스토리지)
     const imageUrl = await this.uploadImageToStorage(file);
 
     await this.userRepo.update({ userSeq }, { profileImageUrl: imageUrl });
@@ -206,5 +204,21 @@ export class UserService {
     file: Express.Multer.File
   ): Promise<string> {
     return `/uploads/profiles/${file.filename}`;
+  }
+
+  // 프로필 이미지 조회
+  @ErrorDecorator("UserService.getProfileImage")
+  async getProfileImage(userSeq: number): Promise<string | null> {
+    const user = await this.userRepo.findOneBy({ userSeq });
+
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "UserService.getProfileImage"
+      );
+    }
+
+    return user.profileImageUrl || null;
   }
 }

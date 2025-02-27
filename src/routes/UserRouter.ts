@@ -12,6 +12,7 @@ UserRouter.get("/check-email", userController.checkUserEmail);
 UserRouter.post("/register", userController.registerUser);
 UserRouter.get("/verify-email", userController.verifyEmail);
 UserRouter.post("/login", userController.loginUser);
+UserRouter.post("/logout", userController.logoutUser);
 UserRouter.post(
   "/profile-image",
   authenticateToken,

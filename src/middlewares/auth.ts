@@ -19,8 +19,7 @@ export const authenticateToken = (
   res: Response,
   next: NextFunction
 ) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+  const token = req.cookies.auth_token;
 
   if (!token) {
     throw new CustomError("인증이 필요합니다.", 401);
