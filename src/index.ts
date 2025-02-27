@@ -2,21 +2,31 @@ import express from "express";
 import "reflect-metadata";
 import { AppDataSource } from "./data-source";
 import "./jobs/CleanupUnverifiedUsers";
-import { GlobalErrorHandler } from "./middlewares/GlobalErrorHandler";
+import { GlobalErrorHandler } from "./middlewares/globalErrorHandler";
 import cors from "cors";
 import UserRouter from "./routes/UserRouter";
 import ExerciseRouter from "./routes/ExerciseRouter";
-
+import { setupImageCache } from "./utils/setupImageCache";
+import { processImage } from "./middlewares/imageProcessor";
+import { CacheManager } from "./utils/cacheManager";
+import { Paths } from "./config/path";
 const app = express();
+
+setupImageCache();
+setInterval(() => {
+  CacheManager.cleanOldCache();
+}, 24 * 60 * 60 * 1000);
 
 app.use(
   cors({
-    origin: "http://localhost:3000", // 프론트엔드 주소 (포트 3000)
+    origin: process.env.FRONTEND_URL, // 프론트엔드 주소
     credentials: true, // 쿠키 등 인증 정보가 필요한 경우 true
   })
 );
 
 app.use(express.json());
+app.use("/uploads/profiles", express.static(Paths.PROFILE_UPLOAD_PATH));
+app.use(processImage);
 
 // 라우터 등록
 app.use("/users", UserRouter);

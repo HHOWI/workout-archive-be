@@ -2,7 +2,7 @@ import { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { Exercise } from "../entities/Exercise";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
-import { CustomError } from "../utils/CustomError";
+import { CustomError } from "../utils/customError";
 
 export class ExerciseService {
   private exerciseRepo: Repository<Exercise>;

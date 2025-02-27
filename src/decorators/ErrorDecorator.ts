@@ -1,5 +1,5 @@
 // src/decorators/ErrorHandler.ts
-import { CustomError } from "../utils/CustomError";
+import { CustomError } from "../utils/customError";
 
 // 타입 가드 함수
 const isErrorWithMessage = (error: unknown): error is { message: string } => {

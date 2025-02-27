@@ -5,7 +5,7 @@ import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { Repository } from "typeorm";
 import { UserDTO } from "../dtos/UserDTO";
-import { CustomError } from "../utils/CustomError";
+import { CustomError } from "../utils/customError";
 import jwt from "jsonwebtoken";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 
@@ -73,6 +73,32 @@ export class UserService {
   async registerUser(data: UserDTO): Promise<User> {
     if (!data.userId || !data.userPw || !data.userNickname || !data.userEmail) {
       throw new CustomError("모든 필드를 입력해야 합니다.", 400);
+    }
+
+    const userIdRegex = /^[a-z][a-z0-9]{5,19}$/;
+    const userEmailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+    const userNicknameRegex = /^[가-힣a-zA-Z0-9._-]{2,10}$/;
+
+    if (!userIdRegex.test(data.userId)) {
+      throw new CustomError(
+        "아이디는 영문 소문자로 시작하고 영문 소문자와 숫자를 포함하여 6~20자여야 합니다.",
+        400
+      );
+    }
+
+    if (!userEmailRegex.test(data.userEmail)) {
+      throw new CustomError("이메일 형식이 올바르지 않습니다.", 400);
+    }
+
+    if (!userNicknameRegex.test(data.userNickname)) {
+      throw new CustomError(
+        "닉네임은 2~10자의 한글, 영문, 숫자와 특수문자(_-.)만 사용 가능합니다.",
+        400
+      );
+    }
+
+    if (data.userPw.length < 8 || data.userPw.length > 20) {
+      throw new CustomError("비밀번호는 8~20자 사이여야 합니다.", 400);
     }
 
     const hashedPw = await bcrypt.hash(data.userPw, 10);
@@ -160,5 +186,25 @@ export class UserService {
     );
 
     return { token, user };
+  }
+
+  @ErrorDecorator("UserService.updateProfileImage")
+  async updateProfileImage(
+    userSeq: number,
+    file: Express.Multer.File
+  ): Promise<string> {
+    // 이미지 저장 로직 (S3 또는 로컬 스토리지)
+    const imageUrl = await this.uploadImageToStorage(file);
+
+    await this.userRepo.update({ userSeq }, { profileImageUrl: imageUrl });
+
+    return imageUrl;
+  }
+
+  @ErrorDecorator("UserService.uploadImageToStorage")
+  private async uploadImageToStorage(
+    file: Express.Multer.File
+  ): Promise<string> {
+    return `/uploads/profiles/${file.filename}`;
   }
 }

@@ -1,6 +1,7 @@
 import asyncHandler from "express-async-handler";
 import { Request, Response } from "express";
 import { UserService } from "../services/UserService";
+import { CustomError } from "../utils/customError";
 
 export class UserController {
   private userService = new UserService();
@@ -101,4 +102,20 @@ export class UserController {
     });
     res.json({ token, userSeq: user.userSeq });
   });
+
+  // POST /users/profile-image
+  public updateProfileImage = asyncHandler(
+    async (req: Request, res: Response) => {
+      if (!req.file) {
+        throw new CustomError("이미지 파일이 필요합니다.", 400);
+      }
+
+      const imageUrl = await this.userService.updateProfileImage(
+        req.user!.userSeq,
+        req.file
+      );
+
+      res.json({ imageUrl });
+    }
+  );
 }
