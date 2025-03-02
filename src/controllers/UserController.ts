@@ -138,4 +138,10 @@ export class UserController {
     });
     res.json({ message: "로그아웃 되었습니다." });
   });
+
+  public getProfileImage = asyncHandler(async (req: Request, res: Response) => {
+    const imageUrl = await this.userService.getProfileImage(req.body);
+
+    res.json({ imageUrl });
+  });
 }

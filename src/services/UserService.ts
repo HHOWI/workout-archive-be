@@ -81,7 +81,7 @@ export class UserService {
 
     if (!userIdRegex.test(data.userId)) {
       throw new CustomError(
-        "아이디는 영문 소문자로 시작하고 영문 소문자와 숫자를 포함하여 6~20자여야 합니다.",
+        "아이디는 영문 소문자와 숫자를 포함하여 6~20자여야 합니다.",
         400
       );
     }
@@ -168,7 +168,13 @@ export class UserService {
 
     const user: User | null = await this.userRepo.findOne({
       where: { userId: data.userId },
-      select: ["userSeq", "userPw", "isVerified", "userNickname"],
+      select: [
+        "userSeq",
+        "userPw",
+        "isVerified",
+        "userNickname",
+        "profileImageUrl",
+      ],
     });
 
     if (!user) throw new CustomError("잘못된 인증 정보", 401);
@@ -183,6 +189,7 @@ export class UserService {
     const userDTO: UserDTO = {
       userSeq: user.userSeq,
       userNickname: user.userNickname,
+      userProfileImg: user.profileImageUrl || process.env.DEFAULT_PROFILE_IMAGE,
     };
     return { token, userDTO };
   }

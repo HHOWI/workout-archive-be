@@ -4,4 +4,5 @@ export interface UserDTO {
   userPw?: string;
   userNickname?: string;
   userEmail?: string;
+  userProfileImg?: string;
 }
