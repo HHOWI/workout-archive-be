@@ -8,6 +8,7 @@ import { UserDTO } from "../dtos/UserDTO";
 import { CustomError } from "../utils/customError";
 import jwt from "jsonwebtoken";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
+import { deleteImage } from "../utils/fileUtiles";
 
 export class UserService {
   private userRepo: Repository<User>;
@@ -199,9 +200,15 @@ export class UserService {
     userSeq: number,
     file: Express.Multer.File
   ): Promise<string> {
+    const user = await this.userRepo.findOneBy({ userSeq });
+    const previousImageUrl = user?.profileImageUrl;
     const imageUrl = await this.uploadImageToStorage(file);
 
     await this.userRepo.update({ userSeq }, { profileImageUrl: imageUrl });
+
+    if (previousImageUrl) {
+      deleteImage(previousImageUrl); // 이전 이미지 삭제 호출
+    }
 
     return imageUrl;
   }
