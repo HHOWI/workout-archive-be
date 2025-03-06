@@ -9,10 +9,10 @@ import {
 import { User } from "./User";
 import { Exercise } from "./Exercise";
 
-@Entity("USER_EXERCISE_POST")
-export class UserExercisePost {
-  @PrimaryGeneratedColumn({ name: "USER_EXERCISE_POST_SEQ" })
-  userExercisePostSeq!: number;
+@Entity("EXERCISE_POST")
+export class ExercisePost {
+  @PrimaryGeneratedColumn({ name: "EXERCISE_POST_SEQ" })
+  exercisePostSeq!: number;
 
   @ManyToOne(() => User, { onDelete: "CASCADE" })
   @JoinColumn({ name: "USER_SEQ" })

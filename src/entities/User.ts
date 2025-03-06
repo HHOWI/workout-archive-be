@@ -3,7 +3,15 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  OneToMany,
 } from "typeorm";
+import { WorkoutOfTheDay } from "./WorkoutOfTheDay";
+import { WorkoutComment } from "./WorkoutComment";
+import { ExercisePost } from "./ExercisePost";
+import { WorkoutRoutine } from "./WorkoutRoutine";
+import { UserInfoRecord } from "./UserInfoRecord";
+import { WorkoutCommentLike } from "./WorkoutCommentLike";
+import { WorkoutLike } from "./WorkoutLike";
 
 @Entity("USER")
 export class User {
@@ -58,4 +66,25 @@ export class User {
     nullable: true,
   })
   verificationToken!: string | null;
+
+  @OneToMany(() => WorkoutOfTheDay, (workout) => workout.user)
+  workouts!: WorkoutOfTheDay[];
+
+  @OneToMany(() => WorkoutComment, (comment) => comment.user)
+  comments!: WorkoutComment[];
+
+  @OneToMany(() => ExercisePost, (post) => post.user)
+  posts!: ExercisePost[];
+
+  @OneToMany(() => WorkoutRoutine, (routine) => routine.user)
+  workoutRoutines!: WorkoutRoutine[];
+
+  @OneToMany(() => UserInfoRecord, (record) => record.user)
+  infoRecords!: UserInfoRecord[];
+
+  @OneToMany(() => WorkoutCommentLike, (like) => like.user)
+  commentLikes!: WorkoutCommentLike[];
+
+  @OneToMany(() => WorkoutLike, (like) => like.user)
+  workoutLikes!: WorkoutLike[];
 }

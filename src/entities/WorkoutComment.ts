@@ -8,20 +8,21 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { User } from "./User";
-import { Exercise } from "./Exercise";
+import { WorkoutOfTheDay } from "./WorkoutOfTheDay";
+import { WorkoutCommentLike } from "./WorkoutCommentLike";
 
-@Entity("EXERCISE_COMMENT")
-export class ExerciseComment {
-  @PrimaryGeneratedColumn({ name: "EXERCISE_COMMENT_SEQ" })
-  exerciseCommentSeq!: number;
+@Entity("WORKOUT_COMMENT")
+export class WorkoutComment {
+  @PrimaryGeneratedColumn({ name: "WORKOUT_COMMENT_SEQ" })
+  workoutCommentSeq!: number;
 
   @ManyToOne(() => User, { onDelete: "CASCADE" })
   @JoinColumn({ name: "USER_SEQ" })
   user!: User;
 
-  @ManyToOne(() => Exercise, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "EXERCISE_SEQ" })
-  exercise!: Exercise;
+  @ManyToOne(() => WorkoutOfTheDay, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "WORKOUT_OF_THE_DAY_SEQ" })
+  workoutOfTheDay!: WorkoutOfTheDay;
 
   @Column({
     name: "COMMENT_CONTENT",
@@ -42,14 +43,17 @@ export class ExerciseComment {
   })
   commentCreatedAt!: Date;
 
-  @ManyToOne(() => ExerciseComment, (comment) => comment.childComments, {
+  @ManyToOne(() => WorkoutComment, (comment) => comment.childComments, {
     onDelete: "CASCADE", // 부모 삭제 시 자식도 삭제
     nullable: true,
   })
   @JoinColumn({ name: "PARENT_COMMENT_SEQ" })
-  parentComment!: ExerciseComment | null;
+  parentComment!: WorkoutComment | null;
 
   // 자식 댓글 목록
-  @OneToMany(() => ExerciseComment, (comment) => comment.parentComment)
-  childComments!: ExerciseComment[];
+  @OneToMany(() => WorkoutComment, (comment) => comment.parentComment)
+  childComments!: WorkoutComment[];
+
+  @OneToMany(() => WorkoutCommentLike, (like) => like.workoutComment)
+  likes!: WorkoutCommentLike[];
 }

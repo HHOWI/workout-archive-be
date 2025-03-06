@@ -7,10 +7,12 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import UserRouter from "./routes/UserRouter";
 import ExerciseRouter from "./routes/ExerciseRouter";
+import WorkoutRouter from "./routes/WorkoutRouter";
 import { setupImageCache } from "./utils/setupImageCache";
 import { processImage } from "./middlewares/imageProcessor";
 import { CacheManager } from "./utils/cacheManager";
 import { Paths } from "./config/path";
+import registerRouter from "./routes/RegisterRouter";
 
 const app = express();
 
@@ -36,6 +38,8 @@ app.use("/uploads", processImage);
 
 app.use("/users", UserRouter);
 app.use("/exercises", ExerciseRouter);
+app.use("/workouts", WorkoutRouter);
+app.use("/register", registerRouter);
 
 app.use(GlobalErrorHandler);
 

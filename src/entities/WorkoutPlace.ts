@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { WorkoutOfTheDay } from "./WorkoutOfTheDay";
 
 @Entity("WORKOUT_PLACE")
 export class WorkoutPlace {
@@ -20,4 +21,7 @@ export class WorkoutPlace {
     nullable: false,
   })
   placeAddress!: string;
+
+  @OneToMany(() => WorkoutOfTheDay, (workout) => workout.workoutPlace)
+  workouts!: WorkoutOfTheDay[];
 }

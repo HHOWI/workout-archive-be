@@ -6,13 +6,20 @@ import {
   PrimaryGeneratedColumn,
 } from "typeorm";
 import { Exercise } from "./Exercise";
+import { WorkoutOfTheDay } from "./WorkoutOfTheDay";
 
-@Entity("RECORD_DETAIL")
-export class RecordDetail {
-  @PrimaryGeneratedColumn({ name: "RECORD_DETAIL_SEQ" })
-  recordDetailSeq!: number;
+@Entity("WORKOUT_DETAIL")
+export class WorkoutDetail {
+  @PrimaryGeneratedColumn({ name: "WORKOUT_DETAIL_SEQ" })
+  workoutDetailSeq!: number;
 
-  @ManyToOne(() => Exercise, { onDelete: "CASCADE" })
+  @ManyToOne(() => WorkoutOfTheDay, (workout) => workout.workoutDetails, {
+    onDelete: "CASCADE",
+  })
+  @JoinColumn({ name: "WORKOUT_OF_THE_DAY_SEQ" })
+  workoutOfTheDay!: WorkoutOfTheDay;
+
+  @ManyToOne(() => Exercise, { onDelete: "SET NULL" })
   @JoinColumn({ name: "EXERCISE_SEQ" })
   exercise!: Exercise;
 

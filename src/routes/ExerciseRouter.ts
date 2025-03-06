@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { ExerciseController } from "../controllers/ExerciseController";
 
-const ExerciseRouter = Router();
+const exerciseRouter = Router();
 const exerciseController = new ExerciseController();
 
-ExerciseRouter.get("/exercises", exerciseController.getAllExercises);
+exerciseRouter.get("/exercises", exerciseController.getAllExercises);
 
-export default ExerciseRouter;
+export default exerciseRouter;
