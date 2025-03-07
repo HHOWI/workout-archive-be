@@ -29,7 +29,15 @@ export class WorkoutService {
     userId: number,
     date: string,
     location: string,
-    exerciseRecords: any[]
+    exerciseRecords: any[],
+    placeInfo?: {
+      kakaoPlaceId: string;
+      placeName: string;
+      addressName: string;
+      roadAddressName: string;
+      x: string; // 경도(longitude)
+      y: string; // 위도(latitude)
+    }
   ): Promise<{ workoutId: number }> {
     // 유효성 검사
     if (!userId) {
@@ -68,16 +76,59 @@ export class WorkoutService {
     }
 
     // 운동 장소 찾기 또는 새로 생성
-    let workoutPlace = await this.workoutPlaceRepository.findOne({
-      where: { placeName: location },
-    });
+    let workoutPlace;
 
-    if (!workoutPlace) {
-      workoutPlace = this.workoutPlaceRepository.create({
-        placeName: location,
-        placeAddress: "", // 나중에 필요하면 확장
+    if (placeInfo && placeInfo.kakaoPlaceId) {
+      // 카카오맵 API로부터 상세 정보가 제공된 경우
+      // 카카오 장소 ID로 검색 (가장 정확한 식별자)
+      workoutPlace = await this.workoutPlaceRepository.findOne({
+        where: { kakaoPlaceId: placeInfo.kakaoPlaceId },
       });
-      await this.workoutPlaceRepository.save(workoutPlace);
+
+      // 새로운 장소인 경우 생성
+      if (!workoutPlace) {
+        workoutPlace = this.workoutPlaceRepository.create({
+          kakaoPlaceId: placeInfo.kakaoPlaceId,
+          placeName: placeInfo.placeName,
+          addressName: placeInfo.addressName || "",
+          roadAddressName: placeInfo.roadAddressName || "",
+          x: parseFloat(placeInfo.x) || 0,
+          y: parseFloat(placeInfo.y) || 0,
+        });
+        await this.workoutPlaceRepository.save(workoutPlace);
+      }
+    } else {
+      // 기존 방식 (이름만으로 검색)
+      // 이 부분은 레거시 지원을 위해 유지하되,
+      // 오류가 발생할 수 있으므로 가능한 빨리 신규 방식으로 마이그레이션 필요
+      try {
+        workoutPlace = await this.workoutPlaceRepository.findOne({
+          where: { placeName: location },
+        });
+
+        if (!workoutPlace) {
+          // 레거시 데이터는 가상의 ID와 좌표를 할당
+          const legacyId = `legacy_${Date.now()}_${Math.random()
+            .toString(36)
+            .substring(2, 9)}`;
+          workoutPlace = this.workoutPlaceRepository.create({
+            kakaoPlaceId: legacyId,
+            placeName: location,
+            addressName: "",
+            roadAddressName: "",
+            x: 0,
+            y: 0,
+          });
+          await this.workoutPlaceRepository.save(workoutPlace);
+        }
+      } catch (error) {
+        console.error("레거시 운동 장소 저장 오류:", error);
+        throw new CustomError(
+          "운동 장소 정보를 저장하는 중 오류가 발생했습니다.",
+          500,
+          "WorkoutService.saveWorkoutRecord"
+        );
+      }
     }
 
     // 운동 기록 메인 엔티티 생성

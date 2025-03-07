@@ -9,7 +9,7 @@ export class WorkoutController {
   // 운동 기록 저장
   public saveWorkoutRecord = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const { date, location, exerciseRecords } = req.body;
+      const { date, location, exerciseRecords, placeInfo } = req.body;
       const userId = req.user?.userSeq;
 
       if (!userId) {
@@ -24,7 +24,8 @@ export class WorkoutController {
         userId,
         date,
         location,
-        exerciseRecords
+        exerciseRecords,
+        placeInfo
       );
 
       res.status(201).json({

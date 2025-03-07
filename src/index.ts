@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import UserRouter from "./routes/UserRouter";
 import ExerciseRouter from "./routes/ExerciseRouter";
 import WorkoutRouter from "./routes/WorkoutRouter";
+import WorkoutPlaceRouter from "./routes/WorkoutPlaceRouter";
 import { setupImageCache } from "./utils/setupImageCache";
 import { processImage } from "./middlewares/imageProcessor";
 import { CacheManager } from "./utils/cacheManager";
@@ -39,6 +40,7 @@ app.use("/uploads", processImage);
 app.use("/users", UserRouter);
 app.use("/exercises", ExerciseRouter);
 app.use("/workouts", WorkoutRouter);
+app.use("/workout-places", WorkoutPlaceRouter);
 app.use("/register", registerRouter);
 
 app.use(GlobalErrorHandler);

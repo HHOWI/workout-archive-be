@@ -7,6 +7,15 @@ export class WorkoutPlace {
   workoutPlaceSeq!: number;
 
   @Column({
+    name: "KAKAO_PLACE_ID",
+    type: "varchar",
+    length: 100,
+    unique: true,
+    nullable: false,
+  })
+  kakaoPlaceId!: string;
+
+  @Column({
     name: "PLACE_NAME",
     type: "varchar",
     length: 100,
@@ -15,12 +24,38 @@ export class WorkoutPlace {
   placeName!: string;
 
   @Column({
-    name: "PLACE_ADDRESS",
+    name: "ADDRESS_NAME",
     type: "varchar",
     length: 200,
+    nullable: true,
+  })
+  addressName!: string;
+
+  @Column({
+    name: "ROAD_ADDRESS_NAME",
+    type: "varchar",
+    length: 200,
+    nullable: true,
+  })
+  roadAddressName!: string;
+
+  @Column({
+    name: "X",
+    type: "decimal",
+    precision: 15,
+    scale: 10,
     nullable: false,
   })
-  placeAddress!: string;
+  x!: number;
+
+  @Column({
+    name: "Y",
+    type: "decimal",
+    precision: 15,
+    scale: 10,
+    nullable: false,
+  })
+  y!: number;
 
   @OneToMany(() => WorkoutOfTheDay, (workout) => workout.workoutPlace)
   workouts!: WorkoutOfTheDay[];
