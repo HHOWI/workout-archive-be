@@ -16,5 +16,10 @@ export const Paths = {
     "..",
     process.env.POST_UPLOAD_PATH || "uploads/posts"
   ),
-  CACHE_DIR: path.resolve(__dirname, "..", "..", "cache"),
+  CACHE_DIR: path.resolve(
+    __dirname,
+    "..",
+    "..",
+    process.env.CACHE_DIR || "cache"
+  ),
 } as const;

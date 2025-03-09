@@ -144,7 +144,7 @@ export class UserService {
       }
     }
 
-    const imageUrl = await this.uploadImageToStorage(file);
+    const imageUrl = await this.uploadProfileImageToStorage(file);
     user.profileImageUrl = imageUrl;
     await this.userRepo.save(user);
 
@@ -152,12 +152,12 @@ export class UserService {
   }
 
   // 이미지 저장소에 업로드
-  @ErrorDecorator("UserService.uploadImageToStorage")
-  private async uploadImageToStorage(
+  @ErrorDecorator("UserService.uploadProfileImageToStorage")
+  private async uploadProfileImageToStorage(
     file: Express.Multer.File
   ): Promise<string> {
-    // 이미지 저장 로직 (예: S3, 로컬 스토리지 등)
-    return `/uploads/profiles/${file.filename}`;
+    const profileUploadPath = process.env.PROFILE_UPLOAD_PATH;
+    return `${profileUploadPath}/${file.filename}`;
   }
 
   // 프로필 이미지 조회

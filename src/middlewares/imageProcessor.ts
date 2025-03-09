@@ -22,10 +22,22 @@ export const processImage = async (
       return next();
     }
 
-    const imagePath = path.join(
-      Paths.PROFILE_UPLOAD_PATH,
-      path.basename(req.path)
-    );
+    // 요청 경로에 따라 적절한 업로드 경로 결정
+    let basePath;
+    let urlPath = req.path.slice(9); // '/uploads/' 제거 후 경로
+
+    if (req.path.startsWith("/uploads/profiles/")) {
+      basePath = Paths.PROFILE_UPLOAD_PATH;
+      urlPath = urlPath.slice(9); // 'profiles/' 제거
+    } else if (req.path.startsWith("/uploads/posts/")) {
+      basePath = Paths.POST_UPLOAD_PATH;
+      urlPath = urlPath.slice(6); // 'posts/' 제거
+    } else {
+      // 기본 경로 (하위 호환성 유지)
+      basePath = Paths.PROFILE_UPLOAD_PATH;
+    }
+
+    const imagePath = path.join(basePath, urlPath);
 
     // 원본 이미지 존재 여부 확인
     try {
@@ -40,9 +52,16 @@ export const processImage = async (
     const quality = parseInt(req.query.quality || "80");
     const format = req.query.format || "jpeg";
 
+    // 캐시 디렉토리 확인 및 생성
+    try {
+      await fs.access(Paths.CACHE_DIR);
+    } catch {
+      await fs.mkdir(Paths.CACHE_DIR, { recursive: true });
+    }
+
     // 캐시 키 생성
     const cacheKey = `${req.path}-w${width}-h${height}-q${quality}-f${format}`;
-    const cachePath = path.join(process.cwd(), "cache", cacheKey);
+    const cachePath = path.join(Paths.CACHE_DIR, cacheKey.replace(/\//g, "_"));
 
     // 캐시된 이미지가 있는지 확인
     try {

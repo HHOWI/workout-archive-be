@@ -54,7 +54,7 @@ export class WorkoutOfTheDay {
 
   @ManyToOne(() => WorkoutPlace, { onDelete: "SET NULL" })
   @JoinColumn({ name: "WORKOUT_PLACE_SEQ" })
-  workoutPlace!: WorkoutPlace;
+  workoutPlace!: WorkoutPlace | null;
 
   @OneToMany(
     () => WorkoutDetail,

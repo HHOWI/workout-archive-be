@@ -1,17 +1,17 @@
 import { Router } from "express";
 import { UserController } from "../controllers/UserController";
-import { upload } from "../middlewares/upload";
+import { uploadProfile } from "../middlewares/upload";
 import { authenticateToken } from "../middlewares/auth";
 
 const userRouter = Router();
 const userController = new UserController();
 
 userRouter.post("/login", userController.loginUser);
-userRouter.post("/logout", userController.logoutUser);
+userRouter.post("/logout", authenticateToken, userController.logoutUser);
 userRouter.post(
   "/profile-image",
   authenticateToken,
-  upload.single("image"),
+  uploadProfile.single("image"),
   userController.updateProfileImage
 );
 

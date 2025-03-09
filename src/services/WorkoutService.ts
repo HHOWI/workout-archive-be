@@ -23,13 +23,23 @@ export class WorkoutService {
     this.userRepository = AppDataSource.getRepository(User);
   }
 
+  @ErrorDecorator("WorkoutService.uploadWorkoutImageToStorage")
+  private async uploadWorkoutImageToStorage(
+    file: Express.Multer.File
+  ): Promise<string> {
+    const postUploadPath = process.env.POST_UPLOAD_PATH;
+    return `${postUploadPath}/${file.filename}`;
+  }
+
   // 운동 기록 저장
   @ErrorDecorator("WorkoutService.saveWorkoutRecord")
   async saveWorkoutRecord(
     userId: number,
     date: string,
-    location: string,
+    location: string | null,
     exerciseRecords: any[],
+    file: Express.Multer.File | undefined = undefined,
+    diary: string | null = null,
     placeInfo?: {
       kakaoPlaceId: string;
       placeName: string;
@@ -50,7 +60,6 @@ export class WorkoutService {
 
     if (
       !date ||
-      !location ||
       !exerciseRecords ||
       !Array.isArray(exerciseRecords) ||
       exerciseRecords.length === 0
@@ -75,8 +84,13 @@ export class WorkoutService {
       );
     }
 
+    // 사진 처리
+    const photoPath = file
+      ? await this.uploadWorkoutImageToStorage(file)
+      : null;
+
     // 운동 장소 찾기 또는 새로 생성
-    let workoutPlace;
+    let workoutPlace = null;
 
     if (placeInfo && placeInfo.kakaoPlaceId) {
       // 카카오맵 API로부터 상세 정보가 제공된 경우
@@ -97,10 +111,8 @@ export class WorkoutService {
         });
         await this.workoutPlaceRepository.save(workoutPlace);
       }
-    } else {
-      // 기존 방식 (이름만으로 검색)
-      // 이 부분은 레거시 지원을 위해 유지하되,
-      // 오류가 발생할 수 있으므로 가능한 빨리 신규 방식으로 마이그레이션 필요
+    } else if (location && location.trim() !== "") {
+      // 위치 정보가 있는 경우에만 처리
       try {
         workoutPlace = await this.workoutPlaceRepository.findOne({
           where: { placeName: location },
@@ -134,8 +146,10 @@ export class WorkoutService {
     // 운동 기록 메인 엔티티 생성
     const workoutOfTheDay = this.workoutRepository.create({
       user,
-      workoutPlace,
+      workoutPlace: workoutPlace || undefined,
       recordDate: new Date(date),
+      workoutDiary: diary, // 일기 저장
+      workoutPhoto: photoPath, // 사진 경로 저장
     });
 
     await this.workoutRepository.save(workoutOfTheDay);
@@ -144,18 +158,18 @@ export class WorkoutService {
     for (const record of exerciseRecords) {
       const { exercise, sets } = record;
 
-      if (!exercise || !exercise.exerciseId || !sets || !Array.isArray(sets)) {
+      if (!exercise || !exercise.exerciseSeq || !sets || !Array.isArray(sets)) {
         // 유효하지 않은 레코드는 건너뜁니다.
         continue;
       }
 
       const exerciseEntity = await this.exerciseRepository.findOne({
-        where: { exerciseSeq: exercise.exerciseId },
+        where: { exerciseSeq: exercise.exerciseSeq },
       });
 
       if (!exerciseEntity) {
         // 해당 운동이 DB에 없는 경우 로그만 기록하고 건너뜁니다.
-        console.warn(`운동 ID ${exercise.exerciseId}를 찾을 수 없습니다.`);
+        console.warn(`운동 ID ${exercise.exerciseSeq}를 찾을 수 없습니다.`);
         continue;
       }
 

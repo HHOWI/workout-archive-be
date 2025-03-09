@@ -9,7 +9,6 @@ export class WorkoutController {
   // 운동 기록 저장
   public saveWorkoutRecord = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const { date, location, exerciseRecords, placeInfo } = req.body;
       const userId = req.user?.userSeq;
 
       if (!userId) {
@@ -20,11 +19,41 @@ export class WorkoutController {
         );
       }
 
+      let workoutData;
+      let placeInfo;
+
+      // FormData 또는 일반 JSON 요청 처리
+      if (req.file) {
+        // FormData로 전송된 경우
+        workoutData = JSON.parse(req.body.workoutData);
+        if (req.body.placeInfo) {
+          placeInfo = JSON.parse(req.body.placeInfo);
+        }
+      } else {
+        // 일반 JSON으로 전송된 경우 (이전 버전 호환성)
+        const {
+          date,
+          location,
+          exerciseRecords,
+          diary,
+          placeInfo: placeInfoData,
+        } = req.body;
+        workoutData = { date, location, exerciseRecords, diary };
+        placeInfo = placeInfoData;
+      }
+
+      // 빈 문자열을 null로 변환
+      if (workoutData.location === "") {
+        workoutData.location = null;
+      }
+
       const result = await this.workoutService.saveWorkoutRecord(
         userId,
-        date,
-        location,
-        exerciseRecords,
+        workoutData.date,
+        workoutData.location,
+        workoutData.exerciseRecords,
+        req.file, // 파일 자체를 서비스 레이어에 전달
+        workoutData.diary,
         placeInfo
       );
 

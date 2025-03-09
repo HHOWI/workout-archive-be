@@ -4,7 +4,7 @@ import { Paths } from "../config/path";
 
 export class CacheManager {
   private static readonly CACHE_DIR = Paths.CACHE_DIR;
-  private static readonly MAX_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7일
+  private static readonly MAX_CACHE_AGE = Number(process.env.MAX_CACHE_AGE);
 
   static async cleanOldCache() {
     try {
