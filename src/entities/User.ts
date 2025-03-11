@@ -8,7 +8,6 @@ import {
 import { WorkoutOfTheDay } from "./WorkoutOfTheDay";
 import { WorkoutComment } from "./WorkoutComment";
 import { ExercisePost } from "./ExercisePost";
-import { WorkoutRoutine } from "./WorkoutRoutine";
 import { UserInfoRecord } from "./UserInfoRecord";
 import { WorkoutCommentLike } from "./WorkoutCommentLike";
 import { WorkoutLike } from "./WorkoutLike";
@@ -75,9 +74,6 @@ export class User {
 
   @OneToMany(() => ExercisePost, (post) => post.user)
   posts!: ExercisePost[];
-
-  @OneToMany(() => WorkoutRoutine, (routine) => routine.user)
-  workoutRoutines!: WorkoutRoutine[];
 
   @OneToMany(() => UserInfoRecord, (record) => record.user)
   infoRecords!: UserInfoRecord[];
