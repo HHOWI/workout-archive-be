@@ -2,7 +2,7 @@ import { AppDataSource } from "../data-source";
 import { User } from "../entities/User";
 import bcrypt from "bcrypt";
 import { Repository } from "typeorm";
-import { UserDTO } from "../dtos/UserDTO";
+import { LoginDTO, UserDTO, UserInfoDTO } from "../dtos/UserDTO";
 import { CustomError } from "../utils/customError";
 import jwt from "jsonwebtoken";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
@@ -61,15 +61,9 @@ export class UserService {
 
   // 로그인 처리
   @ErrorDecorator("UserService.loginUser")
-  async loginUser(data: UserDTO): Promise<{ token: string; userDTO: UserDTO }> {
-    if (!data.userId || !data.userPw) {
-      throw new CustomError(
-        "아이디와 비밀번호를 입력해야 합니다.",
-        400,
-        "UserService.loginUser"
-      );
-    }
-
+  async loginUser(
+    data: LoginDTO
+  ): Promise<{ token: string; userDTO: UserInfoDTO }> {
     const user: User | null = await this.userRepo.findOne({
       where: { userId: data.userId },
       select: [
@@ -83,7 +77,16 @@ export class UserService {
 
     if (!user) {
       throw new CustomError(
-        "존재하지 않는 사용자입니다.",
+        "아이디 또는 비밀번호가 일치하지 않습니다.",
+        401,
+        "UserService.loginUser"
+      );
+    }
+
+    // 비밀번호가 존재하는지 확인 (TypeScript 타입 에러 방지)
+    if (!user.userPw || !data.userPw) {
+      throw new CustomError(
+        "아이디 또는 비밀번호가 일치하지 않습니다.",
         401,
         "UserService.loginUser"
       );
@@ -91,7 +94,7 @@ export class UserService {
 
     if (!(await bcrypt.compare(data.userPw, user.userPw))) {
       throw new CustomError(
-        "비밀번호가 일치하지 않습니다.",
+        "아이디 또는 비밀번호가 일치하지 않습니다.",
         401,
         "UserService.loginUser"
       );
@@ -105,19 +108,53 @@ export class UserService {
       );
     }
 
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new CustomError(
+        "JWT_SECRET 환경 변수가 설정되지 않았습니다.",
+        500,
+        "UserService.loginUser"
+      );
+    }
+
     const token = jwt.sign(
       { userSeq: user.userSeq, userId: data.userId },
-      process.env.JWT_SECRET!,
+      jwtSecret,
       { expiresIn: "1d" }
     );
 
-    const userDTO: UserDTO = {
+    const userDTO: UserInfoDTO = {
       userSeq: user.userSeq,
       userNickname: user.userNickname,
-      userProfileImg: user.profileImageUrl || process.env.DEFAULT_PROFILE_IMAGE,
     };
 
     return { token, userDTO };
+  }
+
+  // 사용자 정보 조회
+  @ErrorDecorator("UserService.getUserInfo")
+  async getUserInfo(userSeq: number): Promise<UserInfoDTO | null> {
+    const user = await this.userRepo.findOne({
+      where: { userSeq },
+      select: [
+        "userSeq",
+        "userId",
+        "userNickname",
+        "userEmail",
+        "profileImageUrl",
+        "isVerified",
+      ],
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    // UserInfoDTO 형태로 변환하여 반환
+    return {
+      userSeq: user.userSeq,
+      userNickname: user.userNickname,
+    };
   }
 
   // 프로필 이미지 업데이트
@@ -162,17 +199,16 @@ export class UserService {
 
   // 프로필 이미지 조회
   @ErrorDecorator("UserService.getProfileImage")
-  async getProfileImage(userSeq: number): Promise<string | null> {
-    const user = await this.userRepo.findOneBy({ userSeq });
+  async getProfileImage(userNickname: string): Promise<string | null> {
+    const user = await this.userRepo.findOne({
+      where: { userNickname },
+      select: ["profileImageUrl"],
+    });
 
-    if (!user) {
-      throw new CustomError(
-        "사용자를 찾을 수 없습니다.",
-        404,
-        "UserService.getProfileImage"
-      );
+    if (user?.profileImageUrl) {
+      return user.profileImageUrl;
+    } else {
+      return process.env.DEFAULT_PROFILE_IMAGE || null;
     }
-
-    return user.profileImageUrl || null;
   }
 }

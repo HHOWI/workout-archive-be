@@ -44,6 +44,14 @@ export class WorkoutOfTheDay {
   })
   workoutLikeCount!: number;
 
+  @Column({
+    name: "MAIN_EXERCISE_TYPE",
+    type: "varchar",
+    length: 20,
+    nullable: true,
+  })
+  mainExerciseType!: string | null;
+
   @CreateDateColumn({
     name: "RECORD_DATE",
     type: "timestamp",
@@ -58,8 +66,7 @@ export class WorkoutOfTheDay {
 
   @OneToMany(
     () => WorkoutDetail,
-    (workoutDetail) => workoutDetail.workoutOfTheDay,
-    { eager: true }
+    (workoutDetail) => workoutDetail.workoutOfTheDay
   )
   workoutDetails!: WorkoutDetail[];
 

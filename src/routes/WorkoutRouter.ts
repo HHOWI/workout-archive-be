@@ -14,43 +14,22 @@ workoutRouter.post(
   workoutController.saveWorkoutRecord
 );
 
-// 운동 기록 조회 API (인증 불필요)
+// 닉네임 기반 운동 기록 조회 API (인증 불필요)
 workoutRouter.get(
-  "/users/:userSeq/workout-records",
-  workoutController.getWorkoutRecords
-);
-
-// 이전 버전 호환성 유지 (로그인한 사용자 본인의 기록)
-workoutRouter.get(
-  "/workout-records",
-  authenticateToken,
-  workoutController.getWorkoutRecords
+  "/profiles/:nickname/workout-records",
+  workoutController.getWorkoutRecordsByNickname
 );
 
 // 특정 운동 기록 상세 조회 API (인증 불필요)
 workoutRouter.get(
-  "/users/:userSeq/workout-records/:workoutOfTheDaySeq",
+  "/profiles/workout-records/:workoutOfTheDaySeq",
   workoutController.getWorkoutRecordDetail
 );
 
-// 이전 버전 호환성 유지
+// 닉네임 기반 운동 기록 총 개수 조회 API (인증 불필요)
 workoutRouter.get(
-  "/workout-records/:workoutOfTheDaySeq",
-  authenticateToken,
-  workoutController.getWorkoutRecordDetail
-);
-
-// 운동 기록 총 개수 조회 API (인증 불필요)
-workoutRouter.get(
-  "/users/:userSeq/workout-records-count",
-  workoutController.getWorkoutOfTheDayCount
-);
-
-// 이전 버전 호환성 유지
-workoutRouter.get(
-  "/workout-records-count",
-  authenticateToken,
-  workoutController.getWorkoutOfTheDayCount
+  "/profiles/:nickname/workout-records-count",
+  workoutController.getWorkoutOfTheDayCountByNickname
 );
 
 export default workoutRouter;

@@ -7,12 +7,14 @@ const userRouter = Router();
 const userController = new UserController();
 
 userRouter.post("/login", userController.loginUser);
-userRouter.post("/logout", authenticateToken, userController.logoutUser);
+userRouter.post("/logout", userController.logoutUser);
 userRouter.post(
   "/profile-image",
   authenticateToken,
   uploadProfile.single("image"),
   userController.updateProfileImage
 );
+userRouter.get("/verify-token", authenticateToken, userController.verifyToken);
+userRouter.get("/profile-image/:userNickname", userController.getProfileImage);
 
 export default userRouter;

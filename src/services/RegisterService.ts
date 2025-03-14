@@ -3,7 +3,7 @@ import { User } from "../entities/User";
 import { AppDataSource } from "../data-source";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
-import { UserDTO } from "../dtos/UserDTO";
+import { RegisterDTO } from "../dtos/UserDTO";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
@@ -37,72 +37,8 @@ export class RegisterService {
 
   // 회원가입 처리
   @ErrorDecorator("RegisterService.registerUser")
-  async registerUser(data: UserDTO): Promise<User> {
-    if (!data.userId || !data.userPw || !data.userNickname || !data.userEmail) {
-      throw new CustomError(
-        "모든 필드를 입력해야 합니다.",
-        400,
-        "RegisterService.registerUser"
-      );
-    }
-
-    const userIdRegex = /^[a-z][a-z0-9]{5,19}$/;
-    const userEmailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
-    const userNicknameRegex = /^[가-힣a-zA-Z0-9._-]{2,10}$/;
-
-    if (!userIdRegex.test(data.userId)) {
-      throw new CustomError(
-        "아이디는 영문 소문자와 숫자를 포함하여 6~20자여야 합니다.",
-        400,
-        "RegisterService.registerUser"
-      );
-    }
-
-    if (!userEmailRegex.test(data.userEmail)) {
-      throw new CustomError(
-        "유효한 이메일 주소를 입력해주세요.",
-        400,
-        "RegisterService.registerUser"
-      );
-    }
-
-    if (!userNicknameRegex.test(data.userNickname)) {
-      throw new CustomError(
-        "닉네임은 한글, 영문, 숫자를 포함하여 2~10자여야 합니다.",
-        400,
-        "RegisterService.registerUser"
-      );
-    }
-
-    // 중복 체크
-    const existingUserId = await this.isUserIdDuplicated(data.userId);
-    if (existingUserId) {
-      throw new CustomError(
-        "이미 사용 중인 아이디입니다.",
-        409,
-        "RegisterService.registerUser"
-      );
-    }
-
-    const existingUserNickname = await this.isUserNicknameDuplicated(
-      data.userNickname
-    );
-    if (existingUserNickname) {
-      throw new CustomError(
-        "이미 사용 중인 닉네임입니다.",
-        409,
-        "RegisterService.registerUser"
-      );
-    }
-
-    const existingUserEmail = await this.isUserEmailDuplicated(data.userEmail);
-    if (existingUserEmail) {
-      throw new CustomError(
-        "이미 사용 중인 이메일입니다.",
-        409,
-        "RegisterService.registerUser"
-      );
-    }
+  async registerUser(data: RegisterDTO): Promise<User> {
+    // 중복 체크는 컨트롤러에서 이미 수행했다고 가정
 
     // 비밀번호 해싱
     const hashedPassword = await bcrypt.hash(data.userPw, 10);
