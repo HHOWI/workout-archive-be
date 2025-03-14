@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // 기본 ID 파라미터 스키마
-export const ExerciseIdSchema = z
+export const ExerciseSeqSchema = z
   .string()
   .or(z.number())
   .transform((val) => Number(val))

@@ -50,7 +50,6 @@ export class WorkoutService {
       y: string; // 위도(latitude)
     }
   ): Promise<{ workoutId: number }> {
-    // 사용자 찾기 (컨트롤러에서 사용자 ID 유효성 검사 완료 가정)
     const user = await this.userRepository.findOne({
       where: { userSeq },
     });
@@ -69,7 +68,7 @@ export class WorkoutService {
       : null;
 
     // 운동 장소 처리
-    let workoutPlace = await this.getOrCreateWorkoutPlace(location, placeInfo);
+    let workoutPlace = await this.getOrCreateWorkoutPlace(placeInfo);
 
     // 운동 기록 메인 엔티티 생성
     const workoutOfTheDay = this.workoutRepository.create({
@@ -89,19 +88,16 @@ export class WorkoutService {
   }
 
   // 운동 장소 가져오기 또는 생성
-  private async getOrCreateWorkoutPlace(
-    location: string | null,
-    placeInfo?: {
-      kakaoPlaceId: string;
-      placeName: string;
-      addressName: string;
-      roadAddressName: string;
-      x: string;
-      y: string;
-    }
-  ): Promise<WorkoutPlace | null> {
+  private async getOrCreateWorkoutPlace(placeInfo?: {
+    kakaoPlaceId: string;
+    placeName: string;
+    addressName: string;
+    roadAddressName: string;
+    x: string;
+    y: string;
+  }): Promise<WorkoutPlace | null> {
     // 장소 정보가 없으면 null 반환
-    if (!placeInfo?.kakaoPlaceId && (!location || location.trim() === "")) {
+    if (!placeInfo?.kakaoPlaceId) {
       return null;
     }
 

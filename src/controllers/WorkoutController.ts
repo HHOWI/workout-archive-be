@@ -3,11 +3,11 @@ import { WorkoutService } from "../services/WorkoutService";
 import asyncHandler from "express-async-handler";
 import { CustomError } from "../utils/customError";
 import {
-  UserIdSchema,
   SaveWorkoutSchema,
   CursorPaginationSchema,
 } from "../schema/WorkoutSchema";
 import { ZodError } from "zod";
+import { UserSeqSchema } from "../schema/UserSchema";
 
 export class WorkoutController {
   private workoutService = new WorkoutService();
@@ -19,7 +19,7 @@ export class WorkoutController {
       if (!userSeq) {
         throw new Error("인증이 필요합니다.");
       }
-      return UserIdSchema.parse(userSeq);
+      return UserSeqSchema.parse(userSeq);
     } catch (error) {
       if (error instanceof Error) {
         throw new CustomError(

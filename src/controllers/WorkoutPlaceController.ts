@@ -2,8 +2,8 @@ import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
 import { WorkoutPlaceService } from "../services/WorkoutPlaceService";
 import { CustomError } from "../utils/customError";
-import { AuthenticatedUserSchema } from "../schema/WorkoutPlaceSchema";
 import { ZodError } from "zod";
+import { UserSeqSchema } from "../schema/UserSchema";
 
 export class WorkoutPlaceController {
   private workoutPlaceService = new WorkoutPlaceService();
@@ -13,7 +13,7 @@ export class WorkoutPlaceController {
     async (req: Request, res: Response): Promise<void> => {
       try {
         // Zod 스키마로 사용자 인증 검증
-        const { userSeq } = AuthenticatedUserSchema.parse({
+        const userSeq = UserSeqSchema.parse({
           userSeq: req.user?.userSeq,
         });
 
