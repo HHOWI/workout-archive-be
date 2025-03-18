@@ -193,8 +193,7 @@ export class UserService {
   private async uploadProfileImageToStorage(
     file: Express.Multer.File
   ): Promise<string> {
-    const profileUploadPath = process.env.PROFILE_UPLOAD_PATH;
-    return `${profileUploadPath}/${file.filename}`;
+    return `${process.env.PROFILE_UPLOAD_PATH}/${file.filename}`;
   }
 
   // 프로필 이미지 조회

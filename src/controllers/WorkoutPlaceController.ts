@@ -3,7 +3,7 @@ import asyncHandler from "express-async-handler";
 import { WorkoutPlaceService } from "../services/WorkoutPlaceService";
 import { CustomError } from "../utils/customError";
 import { ZodError } from "zod";
-import { UserSeqSchema } from "../schema/UserSchema";
+import { ControllerUtil } from "../utils/controllerUtil";
 
 export class WorkoutPlaceController {
   private workoutPlaceService = new WorkoutPlaceService();
@@ -12,32 +12,17 @@ export class WorkoutPlaceController {
   public getRecentWorkoutPlaces = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       try {
-        // Zod 스키마로 사용자 인증 검증
-        const userSeq = UserSeqSchema.parse({
-          userSeq: req.user?.userSeq,
-        });
-
+        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
         const recentPlaces =
           await this.workoutPlaceService.getRecentWorkoutPlaces(userSeq);
         res.status(200).json(recentPlaces);
       } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            "인증이 필요합니다.",
-            401,
-            "WorkoutPlaceController.getRecentWorkoutPlaces"
-          );
-        }
-        if (error instanceof Error) {
-          throw new CustomError(
-            error.message,
-            400,
-            "WorkoutPlaceController.getRecentWorkoutPlaces"
-          );
+        if (error instanceof CustomError) {
+          throw error;
         }
         throw new CustomError(
           "최근 운동 장소 조회 중 오류가 발생했습니다.",
-          400,
+          500,
           "WorkoutPlaceController.getRecentWorkoutPlaces"
         );
       }

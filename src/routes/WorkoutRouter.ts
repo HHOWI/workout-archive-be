@@ -32,4 +32,11 @@ workoutRouter.get(
   workoutController.getWorkoutOfTheDayCountByNickname
 );
 
+// 사용자의 최근 운동목록 조회 API (인증 필요)
+workoutRouter.get(
+  "/workout-records/recent",
+  authenticateToken,
+  workoutController.getRecentWorkoutRecords
+);
+
 export default workoutRouter;
