@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { UserController } from "../controllers/UserController";
 import { uploadProfile } from "../middlewares/upload";
-import { authenticateToken } from "../middlewares/auth";
+import {
+  authenticateToken,
+  optionalAuthenticateToken,
+} from "../middlewares/auth";
 
 const userRouter = Router();
 const userController = new UserController();
@@ -14,7 +17,16 @@ userRouter.post(
   uploadProfile.single("image"),
   userController.updateProfileImage
 );
-userRouter.get("/verify-token", authenticateToken, userController.verifyToken);
+userRouter.get(
+  "/verify-token",
+  optionalAuthenticateToken,
+  userController.verifyToken
+);
 userRouter.get("/profile-image/:userNickname", userController.getProfileImage);
+userRouter.get(
+  "/check-profile-ownership/:userNickname",
+  optionalAuthenticateToken,
+  userController.checkProfileOwnership
+);
 
 export default userRouter;

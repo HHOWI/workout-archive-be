@@ -27,6 +27,23 @@ export class UserService {
     return await this.userRepo.findOneBy({ userNickname });
   }
 
+  // 닉네임으로 로그인한 사용자와 프로필의 유저가 같은지 확인
+  @ErrorDecorator("UserService.checkProfileOwnershipByNickname")
+  async checkProfileOwnershipByNickname(
+    userNickname: string,
+    userSeq: number
+  ): Promise<boolean> {
+    const profileOwner = await this.findByNickname(userNickname);
+    if (!profileOwner) {
+      throw new CustomError(
+        "프로필 사용자를 찾을 수 없습니다.",
+        404,
+        "UserService.checkProfileOwnership"
+      );
+    }
+    return userSeq === profileOwner.userSeq;
+  }
+
   // 사용자 정보 업데이트
   @ErrorDecorator("UserService.updateUser")
   async updateUser(userSeq: number, dto: Partial<User>): Promise<User | null> {

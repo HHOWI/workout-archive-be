@@ -4,100 +4,10 @@ import { UserService } from "../services/UserService";
 import { CustomError } from "../utils/customError";
 import { LoginSchema } from "../schema/UserSchema";
 import { LoginDTO } from "../dtos/UserDTO";
+import { ControllerUtil } from "../utils/controllerUtil";
 
 export class UserController {
   private userService = new UserService();
-
-  // GET /users
-  public getAllUsers = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
-      const users = await this.userService.findAllUser();
-      res.json(users);
-    }
-  );
-
-  // GET /users/nickname/:userNickname
-  public getUserByNickname = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
-      const userNickname = String(req.params.userNickname);
-
-      if (!userNickname || userNickname.trim() === "") {
-        throw new CustomError(
-          "유효한 닉네임이 필요합니다.",
-          400,
-          "UserController.getUserByNickname"
-        );
-      }
-
-      const user = await this.userService.findByNickname(userNickname);
-
-      if (!user) {
-        throw new CustomError(
-          "사용자를 찾을 수 없습니다.",
-          404,
-          "UserController.getUserByNickname"
-        );
-      }
-
-      res.json(user);
-    }
-  );
-
-  // PUT /users/:id
-  public updateUser = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
-      const userSEQ = Number(req.params.id);
-
-      if (isNaN(userSEQ) || userSEQ <= 0) {
-        throw new CustomError(
-          "유효한 사용자 ID가 필요합니다.",
-          400,
-          "UserController.updateUser"
-        );
-      }
-
-      const dto = req.body;
-
-      // 필수 필드 검증 (닉네임은 필수)
-      if (dto.userNickname && dto.userNickname.trim() === "") {
-        throw new CustomError(
-          "닉네임은 공백일 수 없습니다.",
-          400,
-          "UserController.updateUser"
-        );
-      }
-
-      const updatedUser = await this.userService.updateUser(userSEQ, dto);
-
-      if (!updatedUser) {
-        throw new CustomError(
-          "사용자 정보 업데이트에 실패했습니다.",
-          400,
-          "UserController.updateUser"
-        );
-      }
-
-      res.json(updatedUser);
-    }
-  );
-
-  // DELETE /users/:id
-  public deleteUser = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
-      const userSEQ = Number(req.params.id);
-
-      if (isNaN(userSEQ) || userSEQ <= 0) {
-        throw new CustomError(
-          "유효한 사용자 ID가 필요합니다.",
-          400,
-          "UserController.deleteUser"
-        );
-      }
-
-      await this.userService.deleteUser(userSEQ);
-      res.status(204).end();
-    }
-  );
 
   // POST /users/login
   public loginUser = asyncHandler(
@@ -135,15 +45,7 @@ export class UserController {
   // POST /users/profile-image
   public updateProfileImage = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const userSEQ = req.user?.userSeq;
-
-      if (!userSEQ) {
-        throw new CustomError(
-          "인증이 필요합니다.",
-          401,
-          "UserController.updateProfileImage"
-        );
-      }
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
       if (!req.file) {
         throw new CustomError(
@@ -179,7 +81,7 @@ export class UserController {
       }
 
       const imageUrl = await this.userService.updateProfileImage(
-        userSEQ,
+        userSeq,
         req.file
       );
       res.json({ imageUrl });
@@ -206,17 +108,12 @@ export class UserController {
   // GET /users/verify-token (인증 토큰 유효성 검증 및 사용자 정보 반환)
   public verifyToken = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const userSeq = req.user?.userSeq;
-
-      if (!userSeq) {
-        throw new CustomError(
-          "유효한 인증 토큰이 없습니다.",
-          401,
-          "UserController.verifyToken"
-        );
+      if (!req.user) {
+        res.status(200).json(null);
+        return;
       }
 
-      // 사용자 정보 조회
+      const userSeq = req.user.userSeq;
       const userInfo = await this.userService.getUserInfo(userSeq);
 
       if (!userInfo) {
@@ -227,11 +124,32 @@ export class UserController {
         );
       }
 
-      // 최소한의 사용자 정보만 반환 (닉네임, 사용자 ID)
       res.json({
         userSeq: userInfo.userSeq,
         userNickname: userInfo.userNickname,
       });
+    }
+  );
+
+  // GET /users/check-profile-ownership/:userNickname (프로필 소유권 확인)
+  public checkProfileOwnership = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const userNickname = req.params.userNickname;
+
+      if (!req.user) {
+        res.json({ isOwner: false }); // 비로그인 시 false 반환
+        return;
+      }
+
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+
+      // 해당 닉네임을 가진 사용자의 SEQ 조회
+      const isOwner = await this.userService.checkProfileOwnershipByNickname(
+        userNickname,
+        userSeq
+      );
+
+      res.json({ isOwner });
     }
   );
 }

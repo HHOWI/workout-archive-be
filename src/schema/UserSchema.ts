@@ -15,14 +15,6 @@ const USER_NICKNAME_REGEX = /^[가-힣a-zA-Z0-9._-]{2,10}$/;
 const USER_NICKNAME_ERROR =
   "닉네임은 한글, 영문, 숫자를 포함하여 2~10자여야 합니다.";
 
-// 사용자 번호 스키마
-export const UserSeqSchema = z
-  .string()
-  .or(z.number())
-  .transform((val) => Number(val))
-  .refine((val) => !isNaN(val) && val > 0, {
-    message: "유효한 사용자 ID가 필요합니다.",
-  });
 // 각 요청 스키마
 export const RegisterSchema = z.object({
   userId: UserIdSchema.regex(USER_ID_REGEX, USER_ID_ERROR),
