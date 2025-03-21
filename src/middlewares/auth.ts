@@ -37,3 +37,28 @@ export const authenticateToken = (
     throw new CustomError("유효하지 않은 토큰입니다.", 401);
   }
 };
+
+export const optionalAuthenticateToken = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const token = req.cookies.auth_token;
+
+  if (!token) {
+    req.user = undefined;
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      userSeq: number;
+      userId: string;
+    };
+    req.user = decoded;
+    next();
+  } catch (error) {
+    req.user = undefined;
+    next();
+  }
+};
