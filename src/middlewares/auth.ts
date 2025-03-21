@@ -47,6 +47,7 @@ export const optionalAuthenticateToken = (
 
   if (!token) {
     req.user = undefined;
+    res.setHeader("X-Token-Expired", "false");
     return next();
   }
 
@@ -56,9 +57,12 @@ export const optionalAuthenticateToken = (
       userId: string;
     };
     req.user = decoded;
+    res.setHeader("X-Token-Expired", "false"); // 유효한 토큰
     next();
   } catch (error) {
     req.user = undefined;
+    res.setHeader("X-Token-Expired", "true"); // 토큰 만료
+    res.clearCookie("auth_token", { httpOnly: true }); // 만료된 토큰 쿠키 삭제
     next();
   }
 };
