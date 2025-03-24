@@ -11,16 +11,12 @@ import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
 
 export class WorkoutService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
-  private workoutDetailRepository: Repository<WorkoutDetail>;
-  private exerciseRepository: Repository<Exercise>;
   private workoutPlaceRepository: Repository<WorkoutPlace>;
   private userRepository: Repository<User>;
   private dataSource: DataSource;
 
   constructor() {
     this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
-    this.workoutDetailRepository = AppDataSource.getRepository(WorkoutDetail);
-    this.exerciseRepository = AppDataSource.getRepository(Exercise);
     this.workoutPlaceRepository = AppDataSource.getRepository(WorkoutPlace);
     this.userRepository = AppDataSource.getRepository(User);
     this.dataSource = AppDataSource;

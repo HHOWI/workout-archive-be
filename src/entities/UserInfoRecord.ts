@@ -17,6 +17,9 @@ export class UserInfoRecord {
   @JoinColumn({ name: "USER_SEQ" })
   user!: User;
 
+  @Column({ name: "HEIGHT", type: "float", nullable: true })
+  height!: number | null;
+
   @Column({ name: "BODY_WEIGHT", type: "float", nullable: true })
   bodyWeight!: number | null;
 
