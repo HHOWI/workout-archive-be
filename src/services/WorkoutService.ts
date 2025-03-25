@@ -10,6 +10,7 @@ import { CustomError } from "../utils/customError";
 import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
 import * as fs from "fs";
 import * as path from "path";
+import { deleteImage } from "../utils/fileUtiles";
 
 export class WorkoutService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
@@ -448,11 +449,9 @@ export class WorkoutService {
       for (const workout of workoutsToDelete) {
         if (workout.workoutPhoto) {
           try {
-            const filePath = path.resolve(workout.workoutPhoto);
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-              deletedPhotos++;
-            }
+            // 파일 유틸리티 함수를 사용하여 이미지 삭제
+            deleteImage(workout.workoutPhoto);
+            deletedPhotos++;
           } catch (error: any) {
             const errorMessage = `Failed to delete photo for workout ${workout.workoutOfTheDaySeq}: ${error.message}`;
             console.error(errorMessage);

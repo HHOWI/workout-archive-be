@@ -64,3 +64,13 @@ export const BodyLogFilterSchema = z.object({
 });
 
 export type BodyLogFilterDTO = z.infer<typeof BodyLogFilterSchema>;
+
+// 바디로그 통계 필터 스키마
+export const BodyLogStatsFilterSchema = z.object({
+  period: z
+    .enum(["3months", "6months", "1year", "2years", "all"])
+    .default("1year"),
+  interval: z.enum(["1week", "2weeks", "4weeks", "3months"]).default("1week"),
+});
+
+export type BodyLogStatsFilterDTO = z.infer<typeof BodyLogStatsFilterSchema>;

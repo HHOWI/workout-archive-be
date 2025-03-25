@@ -8,19 +8,26 @@ const bodyLogController = new BodyLogController();
 // 바디로그 저장 (인증 필요)
 router.post("/body-logs", authenticateToken, bodyLogController.saveBodyLog);
 
-// 사용자의 바디로그 목록 조회 (인증 필요)
+// 바디로그 목록 조회 (인증 필요)
 router.get("/body-logs", authenticateToken, bodyLogController.getBodyLogs);
 
-// 사용자의 최신 바디로그 조회 (인증 필요)
+// 최신 바디로그 조회 (인증 필요)
 router.get(
   "/body-logs/latest",
   authenticateToken,
   bodyLogController.getLatestBodyLog
 );
 
-// 특정 바디로그 삭제 (인증 필요)
+// 바디로그 통계 데이터 조회 (인증 필요)
+router.get(
+  "/body-logs/stats",
+  authenticateToken,
+  bodyLogController.getBodyLogStats
+);
+
+// 바디로그 삭제 (인증 필요)
 router.delete(
-  "/body-logs/:userInfoRecordSeq",
+  "/body-logs/:bodyLogSeq",
   authenticateToken,
   bodyLogController.deleteBodyLog
 );

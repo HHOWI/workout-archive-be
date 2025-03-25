@@ -7,7 +7,7 @@ import {
 } from "typeorm";
 import { WorkoutOfTheDay } from "./WorkoutOfTheDay";
 import { WorkoutComment } from "./WorkoutComment";
-import { UserInfoRecord } from "./UserInfoRecord";
+import { BodyLog } from "./BodyLog";
 import { WorkoutCommentLike } from "./WorkoutCommentLike";
 import { WorkoutLike } from "./WorkoutLike";
 
@@ -71,8 +71,8 @@ export class User {
   @OneToMany(() => WorkoutComment, (comment) => comment.user)
   comments!: WorkoutComment[];
 
-  @OneToMany(() => UserInfoRecord, (record) => record.user)
-  infoRecords!: UserInfoRecord[];
+  @OneToMany(() => BodyLog, (bodyLog) => bodyLog.user)
+  bodyLogs!: BodyLog[];
 
   @OneToMany(() => WorkoutCommentLike, (like) => like.user)
   commentLikes!: WorkoutCommentLike[];
