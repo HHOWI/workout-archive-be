@@ -196,7 +196,9 @@ export class WorkoutService {
         "workout.workoutLikeCount",
       ])
       .leftJoin("workout.user", "user")
+      .addSelect(["user.userNickname", "user.profileImageUrl"])
       .where("user.userNickname = :nickname", { nickname })
+      .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
       .leftJoin("workout.workoutPlace", "workoutPlace")
       .addSelect("workoutPlace.placeName")
       .orderBy("workout.workoutOfTheDaySeq", "DESC");
@@ -221,31 +223,23 @@ export class WorkoutService {
   async getWorkoutRecordDetail(
     workoutOfTheDaySeq: number
   ): Promise<WorkoutOfTheDay> {
-    // 운동 기록 및 관련 데이터 조회
+    // 운동 기록 및 관련 데이터 조회 - 사용자 정보는 필요한 것만 선택적 조회
     const workout = await this.workoutRepository
       .createQueryBuilder("workout")
-      .select([
-        "workout.workoutOfTheDaySeq",
-        "workout.workoutPhoto",
-        "workout.workoutDiary",
-        "workout.workoutLikeCount",
-        "workout.recordDate",
-      ])
-      .leftJoin("workout.workoutPlace", "workoutPlace")
-      .addSelect("workoutPlace.placeName")
-      .leftJoin("workout.user", "user")
-      .addSelect(["user.userNickname", "user.profileImageUrl"])
+      .leftJoinAndSelect("workout.workoutPlace", "workoutPlace")
       .leftJoinAndSelect("workout.workoutDetails", "workoutDetails")
       .leftJoinAndSelect("workoutDetails.exercise", "exercise")
+      .leftJoin("workout.user", "user")
+      .addSelect(["user.userSeq", "user.userNickname", "user.profileImageUrl"])
       .where("workout.workoutOfTheDaySeq = :workoutOfTheDaySeq", {
         workoutOfTheDaySeq,
       })
-      .orderBy("workoutDetails.workoutDetailSeq", "ASC")
+      .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
       .getOne();
 
     if (!workout) {
       throw new CustomError(
-        "해당 운동 기록을 찾을 수 없습니다.",
+        "운동 기록을 찾을 수 없습니다.",
         404,
         "WorkoutService.getWorkoutRecordDetail"
       );
@@ -257,8 +251,24 @@ export class WorkoutService {
   // 닉네임으로 운동 기록 총 개수 조회
   @ErrorDecorator("WorkoutService.getWorkoutOfTheDayCountByNickname")
   async getWorkoutOfTheDayCountByNickname(nickname: string): Promise<number> {
+    const userRepository = this.dataSource.getRepository(User);
+    const user = await userRepository.findOne({
+      where: { userNickname: nickname },
+    });
+
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "WorkoutService.getWorkoutOfTheDayCountByNickname"
+      );
+    }
+
     const count = await this.workoutRepository.count({
-      where: { user: { userNickname: nickname } },
+      where: {
+        user: { userSeq: user.userSeq },
+        isDeleted: 0,
+      },
     });
 
     return count;
@@ -267,13 +277,134 @@ export class WorkoutService {
   // 사용자의 최근 운동목록 조회
   @ErrorDecorator("WorkoutService.getRecentWorkoutRecords")
   async getRecentWorkoutRecords(userSeq: number): Promise<WorkoutOfTheDay[]> {
-    // 사용자의 최근 운동기록 10개를 가져옴
-    const recentWorkouts = await this.workoutRepository.find({
-      where: { user: { userSeq } },
-      order: { recordDate: "DESC" },
-      take: 10,
+    const workouts = await this.workoutRepository
+      .createQueryBuilder("workout")
+      .leftJoinAndSelect("workout.workoutPlace", "workoutPlace")
+      .leftJoinAndSelect("workout.workoutDetails", "workoutDetails")
+      .leftJoinAndSelect("workoutDetails.exercise", "exercise")
+      .leftJoin("workout.user", "user")
+      .addSelect(["user.userNickname", "user.profileImageUrl"])
+      .where("user.userSeq = :userSeq", { userSeq })
+      .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
+      .orderBy("workout.workoutOfTheDaySeq", "DESC")
+      .take(10)
+      .getMany();
+
+    return workouts;
+  }
+
+  // 워크아웃 소프트 삭제
+  @ErrorDecorator("WorkoutService.softDeleteWorkout")
+  async softDeleteWorkout(
+    userSeq: number,
+    workoutOfTheDaySeq: number
+  ): Promise<void> {
+    // 사용자 정보 조회
+    const user = await this.userRepository.findOne({
+      where: { userSeq },
+      select: ["userSeq", "userNickname"],
     });
 
-    return recentWorkouts;
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "WorkoutService.softDeleteWorkout"
+      );
+    }
+
+    // 운동 기록 조회 - 닉네임으로 확인
+    const workout = await this.workoutRepository
+      .createQueryBuilder("workout")
+      .leftJoin("workout.user", "user")
+      .addSelect(["user.userNickname"])
+      .where("workout.workoutOfTheDaySeq = :workoutOfTheDaySeq", {
+        workoutOfTheDaySeq,
+      })
+      .getOne();
+
+    // 예외 처리
+    if (!workout) {
+      throw new CustomError(
+        "운동 기록을 찾을 수 없습니다.",
+        404,
+        "WorkoutService.softDeleteWorkout"
+      );
+    }
+
+    // 권한 검사 (닉네임으로 확인)
+    if (workout.user.userNickname !== user.userNickname) {
+      throw new CustomError(
+        "본인의 운동 기록만 삭제할 수 있습니다.",
+        403,
+        "WorkoutService.softDeleteWorkout"
+      );
+    }
+
+    // 소프트 삭제 처리
+    workout.isDeleted = 1;
+    await this.workoutRepository.save(workout);
+  }
+
+  // 워크아웃 수정 기능 추가
+  @ErrorDecorator("WorkoutService.updateWorkout")
+  async updateWorkout(
+    userSeq: number,
+    workoutOfTheDaySeq: number,
+    updateData: { workoutDiary?: string | null }
+  ): Promise<WorkoutOfTheDay> {
+    // 사용자 정보 조회
+    const user = await this.userRepository.findOne({
+      where: { userSeq },
+      select: ["userSeq", "userNickname"],
+    });
+
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "WorkoutService.updateWorkout"
+      );
+    }
+
+    // 운동 기록 조회 - 닉네임으로 확인
+    const workout = await this.workoutRepository
+      .createQueryBuilder("workout")
+      .leftJoin("workout.user", "user")
+      .addSelect(["user.userNickname"])
+      .where("workout.workoutOfTheDaySeq = :workoutOfTheDaySeq", {
+        workoutOfTheDaySeq,
+      })
+      .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
+      .getOne();
+
+    // 예외 처리
+    if (!workout) {
+      throw new CustomError(
+        "운동 기록을 찾을 수 없습니다.",
+        404,
+        "WorkoutService.updateWorkout"
+      );
+    }
+
+    // 권한 검사 (닉네임으로 확인)
+    if (workout.user.userNickname !== user.userNickname) {
+      throw new CustomError(
+        "본인의 운동 기록만 수정할 수 있습니다.",
+        403,
+        "WorkoutService.updateWorkout"
+      );
+    }
+
+    // 수정할 필드가 있으면 적용
+    if (updateData.workoutDiary !== undefined) {
+      workout.workoutDiary = updateData.workoutDiary;
+    }
+
+    // 저장 및 반환 - 필요한 관계들 함께 로드
+    const updatedWorkout = await this.workoutRepository.save(workout);
+
+    // 필요한 관계들을 포함하여 다시 조회
+    return this.getWorkoutRecordDetail(updatedWorkout.workoutOfTheDaySeq);
   }
 }

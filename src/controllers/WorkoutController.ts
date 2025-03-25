@@ -5,6 +5,7 @@ import { CustomError } from "../utils/customError";
 import {
   SaveWorkoutSchema,
   CursorPaginationSchema,
+  UpdateWorkoutSchema,
 } from "../schema/WorkoutSchema";
 import { UserNicknameSchema } from "../schema/UserSchema";
 import { SeqSchema } from "../schema/BaseSchema";
@@ -120,6 +121,54 @@ export class WorkoutController {
       const recentWorkoutRecords =
         await this.workoutService.getRecentWorkoutRecords(userSeq);
       res.status(200).json(recentWorkoutRecords);
+    }
+  );
+
+  // 운동 기록 소프트 삭제 (인증 필요)
+  public softDeleteWorkout = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
+
+      await this.workoutService.softDeleteWorkout(userSeq, workoutOfTheDaySeq);
+
+      res.status(200).json({
+        message: "운동 기록이 성공적으로 삭제되었습니다.",
+      });
+    }
+  );
+
+  // 운동 기록 수정 (인증 필요)
+  public updateWorkout = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
+
+      // 수정 데이터 유효성 검사
+      const updateResult = UpdateWorkoutSchema.safeParse(req.body);
+      if (!updateResult.success) {
+        throw new CustomError(
+          "유효성 검사 실패",
+          400,
+          "WorkoutController.updateWorkout",
+          updateResult.error.errors.map((err) => ({
+            message: err.message,
+            path: err.path.map((p) => p.toString()),
+          }))
+        );
+      }
+
+      // 워크아웃 수정
+      const updatedWorkout = await this.workoutService.updateWorkout(
+        userSeq,
+        workoutOfTheDaySeq,
+        updateResult.data
+      );
+
+      res.status(200).json({
+        message: "운동 기록이 성공적으로 수정되었습니다.",
+        workout: updatedWorkout,
+      });
     }
   );
 }

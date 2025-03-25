@@ -39,4 +39,18 @@ workoutRouter.get(
   workoutController.getRecentWorkoutRecords
 );
 
+// 운동 기록 소프트 삭제 API (인증 필요)
+workoutRouter.delete(
+  "/workout-records/:workoutOfTheDaySeq",
+  authenticateToken,
+  workoutController.softDeleteWorkout
+);
+
+// 운동 기록 수정 API (인증 필요)
+workoutRouter.put(
+  "/workout-records/:workoutOfTheDaySeq",
+  authenticateToken,
+  workoutController.updateWorkout
+);
+
 export default workoutRouter;

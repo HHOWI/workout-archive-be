@@ -138,3 +138,8 @@ export const SaveWorkoutSchema = z.object({
   }),
   placeInfo: PlaceInfoSchema,
 });
+
+// 워크아웃 수정 스키마
+export const UpdateWorkoutSchema = z.object({
+  workoutDiary: z.string().nullable().optional(),
+});

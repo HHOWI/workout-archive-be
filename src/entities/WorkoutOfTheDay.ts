@@ -60,6 +60,13 @@ export class WorkoutOfTheDay {
   })
   recordDate!: Date;
 
+  @Column({
+    name: "IS_DELETED",
+    type: "number",
+    default: () => 0,
+  })
+  isDeleted!: number;
+
   @ManyToOne(() => WorkoutPlace, { onDelete: "SET NULL" })
   @JoinColumn({ name: "WORKOUT_PLACE_SEQ" })
   workoutPlace!: WorkoutPlace | null;
