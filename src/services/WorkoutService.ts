@@ -1,4 +1,4 @@
-import { DataSource, QueryRunner, Repository, In } from "typeorm";
+import { DataSource, QueryRunner, Repository, In, LessThan } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { WorkoutOfTheDay } from "../entities/WorkoutOfTheDay";
 import { WorkoutDetail } from "../entities/WorkoutDetail";
@@ -8,6 +8,8 @@ import { User } from "../entities/User";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
 import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
+import * as fs from "fs";
+import * as path from "path";
 
 export class WorkoutService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
@@ -406,5 +408,116 @@ export class WorkoutService {
 
     // 필요한 관계들을 포함하여 다시 조회
     return this.getWorkoutRecordDetail(updatedWorkout.workoutOfTheDaySeq);
+  }
+
+  // 30일 이상 지난 소프트 삭제된 워크아웃 데이터 영구 삭제
+  @ErrorDecorator("WorkoutService.cleanupSoftDeletedWorkouts")
+  async cleanupSoftDeletedWorkouts(): Promise<{
+    deletedCount: number;
+    deletedPhotos: number;
+    errors: string[];
+  }> {
+    // 30일 전 날짜 계산
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const errors: string[] = [];
+    let deletedPhotos = 0;
+
+    try {
+      // 30일 이상 지난 소프트 삭제된 워크아웃 조회
+      const workoutsToDelete = await this.workoutRepository.find({
+        where: {
+          isDeleted: 1,
+          // 소프트 삭제 날짜를 따로 저장하지 않으므로 recordDate 기준으로 판단
+          // 이상적으로는 deletedAt 필드를 추가해야 하지만 현재 상황에서는 recordDate로 대체
+          recordDate: LessThan(thirtyDaysAgo),
+        },
+        relations: ["workoutDetails"],
+      });
+
+      console.log(
+        `Found ${workoutsToDelete.length} old deleted workouts to clean up.`
+      );
+
+      if (workoutsToDelete.length === 0) {
+        return { deletedCount: 0, deletedPhotos: 0, errors: [] };
+      }
+
+      // 삭제할 워크아웃 사진 파일 정리
+      for (const workout of workoutsToDelete) {
+        if (workout.workoutPhoto) {
+          try {
+            const filePath = path.resolve(workout.workoutPhoto);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              deletedPhotos++;
+            }
+          } catch (error: any) {
+            const errorMessage = `Failed to delete photo for workout ${workout.workoutOfTheDaySeq}: ${error.message}`;
+            console.error(errorMessage);
+            errors.push(errorMessage);
+          }
+        }
+      }
+
+      // 데이터베이스에서 영구 삭제
+      const workoutIds = workoutsToDelete.map((w) => w.workoutOfTheDaySeq);
+
+      // 트랜잭션 시작
+      const queryRunner = this.dataSource.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+
+      try {
+        // WorkoutDetail 데이터 삭제 (CASCADE로 처리되지만 명시적으로 삭제)
+        const workoutDetailIds = workoutsToDelete
+          .flatMap((w) => w.workoutDetails || [])
+          .map((wd) => wd.workoutDetailSeq);
+
+        if (workoutDetailIds.length > 0) {
+          await queryRunner.manager.delete(WorkoutDetail, workoutDetailIds);
+        }
+
+        // WorkoutOfTheDay 데이터 삭제
+        const deleteResult = await queryRunner.manager.delete(
+          WorkoutOfTheDay,
+          workoutIds
+        );
+
+        await queryRunner.commitTransaction();
+
+        console.log(
+          `Successfully deleted ${deleteResult.affected} old workout records.`
+        );
+        return {
+          deletedCount: deleteResult.affected || 0,
+          deletedPhotos,
+          errors,
+        };
+      } catch (error: any) {
+        await queryRunner.rollbackTransaction();
+        const errorMessage = `Database transaction failed: ${error.message}`;
+        console.error(errorMessage);
+        errors.push(errorMessage);
+        throw new CustomError(
+          "소프트 삭제된 워크아웃 정리 중 오류가 발생했습니다.",
+          500,
+          "WorkoutService.cleanupSoftDeletedWorkouts"
+        );
+      } finally {
+        await queryRunner.release();
+      }
+    } catch (error: any) {
+      const errorMessage = `Cleanup process failed: ${error.message}`;
+      console.error(errorMessage);
+      errors.push(errorMessage);
+
+      return {
+        deletedCount: 0,
+        deletedPhotos,
+        errors,
+      };
+    }
   }
 }
