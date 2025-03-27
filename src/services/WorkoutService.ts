@@ -7,10 +7,15 @@ import { WorkoutPlace } from "../entities/WorkoutPlace";
 import { User } from "../entities/User";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
-import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
+import {
+  SaveWorkoutDTO,
+  ExerciseWeightStatsDTO,
+  ExerciseWeightStats,
+} from "../dtos/WorkoutDTO";
 import * as fs from "fs";
 import * as path from "path";
 import { deleteImage } from "../utils/fileUtiles";
+import { ExerciseWeightStatsFilterDTO } from "../schema/WorkoutSchema";
 
 export class WorkoutService {
   private workoutRepository: Repository<WorkoutOfTheDay>;

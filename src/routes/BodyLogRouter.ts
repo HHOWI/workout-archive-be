@@ -18,13 +18,6 @@ router.get(
   bodyLogController.getLatestBodyLog
 );
 
-// 바디로그 통계 데이터 조회 (인증 필요)
-router.get(
-  "/body-logs/stats",
-  authenticateToken,
-  bodyLogController.getBodyLogStats
-);
-
 // 바디로그 삭제 (인증 필요)
 router.delete(
   "/body-logs/:bodyLogSeq",

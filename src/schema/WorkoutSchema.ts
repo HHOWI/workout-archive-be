@@ -143,3 +143,22 @@ export const SaveWorkoutSchema = z.object({
 export const UpdateWorkoutSchema = z.object({
   workoutDiary: z.string().nullable().optional(),
 });
+
+// 운동 무게 통계 필터 스키마
+export const ExerciseWeightStatsFilterSchema = z.object({
+  period: z
+    .enum(["1months", "3months", "6months", "1year", "2years", "all"])
+    .default("3months"),
+  interval: z
+    .enum(["1week", "2weeks", "4weeks", "3months", "all"])
+    .default("all"),
+  rm: z.enum(["1RM", "5RM", "over8RM"]).default("over8RM"),
+  exerciseSeqs: z
+    .array(z.number().int().positive())
+    .min(1, "최소 1개 이상의 운동을 선택해야 합니다.")
+    .max(5, "최대 5개까지의 운동만 선택 가능합니다."),
+});
+
+export type ExerciseWeightStatsFilterDTO = z.infer<
+  typeof ExerciseWeightStatsFilterSchema
+>;

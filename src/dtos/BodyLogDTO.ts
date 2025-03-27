@@ -1,14 +1,19 @@
+import { StatsDataPoint } from "../services/StatisticsService";
+
+// 바디로그 데이터 DTO
 export interface BodyLogDTO {
-  bodyLogSeq?: number;
-  userId?: string;
+  bodyLogSeq: number;
+  userSeq: number;
+  height?: number | null;
   bodyWeight?: number | null;
   muscleMass?: number | null;
   bodyFat?: number | null;
-  recordDate?: Date;
+  recordDate: Date;
 }
 
+// 바디로그 통계 데이터 DTO
 export interface BodyLogStatsDTO {
-  bodyWeight: { date: string; value: number | null }[];
-  muscleMass: { date: string; value: number | null }[];
-  bodyFat: { date: string; value: number | null }[];
+  bodyWeight: StatsDataPoint[];
+  muscleMass: StatsDataPoint[];
+  bodyFat: StatsDataPoint[];
 }

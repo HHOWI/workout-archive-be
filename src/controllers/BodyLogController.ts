@@ -5,7 +5,6 @@ import { CustomError } from "../utils/customError";
 import {
   SaveBodyLogSchema,
   BodyLogFilterSchema,
-  BodyLogStatsFilterSchema,
 } from "../schema/BodyLogSchema";
 import { SeqSchema } from "../schema/BaseSchema";
 import { ControllerUtil } from "../utils/controllerUtil";
@@ -134,40 +133,6 @@ export class BodyLogController {
       res.status(200).json({
         message: "바디로그가 성공적으로 삭제되었습니다.",
       });
-    }
-  );
-
-  /**
-   * 바디로그 통계 데이터 조회 (인증 필요)
-   */
-  public getBodyLogStats = asyncHandler(
-    async (req: Request, res: Response): Promise<void> => {
-      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-
-      // 필터 옵션 파싱
-      const filterResult = BodyLogStatsFilterSchema.safeParse({
-        period: req.query.period || undefined,
-        interval: req.query.interval || undefined,
-      });
-
-      if (!filterResult.success) {
-        throw new CustomError(
-          "필터 옵션 유효성 검사 실패",
-          400,
-          "BodyLogController.getBodyLogStats",
-          filterResult.error.errors.map((err) => ({
-            message: err.message,
-            path: err.path.map((p) => p.toString()),
-          }))
-        );
-      }
-
-      const stats = await this.bodyLogService.getBodyLogStats(
-        userSeq,
-        filterResult.data
-      );
-
-      res.status(200).json(stats);
     }
   );
 }
