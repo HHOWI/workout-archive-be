@@ -53,4 +53,16 @@ workoutRouter.put(
   workoutController.updateWorkout
 );
 
+// 특정 장소의 운동 기록 목록 조회 API - 인증 선택 사항
+workoutRouter.get(
+  "/places/:placeSeq/workout-records",
+  workoutController.getWorkoutsByPlace
+);
+
+// 장소 ID로 운동 기록 총 개수 조회 API - 인증 선택 사항
+workoutRouter.get(
+  "/places/:placeSeq/workout-records-count",
+  workoutController.getWorkoutOfTheDayCountByPlaceId
+);
+
 export default workoutRouter;

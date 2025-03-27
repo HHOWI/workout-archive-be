@@ -10,6 +10,7 @@ import WorkoutRouter from "./routes/WorkoutRouter";
 import WorkoutPlaceRouter from "./routes/WorkoutPlaceRouter";
 import BodyLogRouter from "./routes/BodyLogRouter";
 import StatisticsRouter from "./routes/StatisticsRouter";
+import SearchRouter from "./routes/SearchRouter";
 import { setupImageCache } from "./utils/setupImageCache";
 import { processImage } from "./middlewares/imageProcessor";
 import { CacheManager } from "./utils/cacheManager";
@@ -48,6 +49,7 @@ app.use("/workout-places", WorkoutPlaceRouter);
 app.use("/users", BodyLogRouter);
 app.use("/register", registerRouter);
 app.use("/statistics", StatisticsRouter);
+app.use("/search", SearchRouter);
 
 app.use(GlobalErrorHandler);
 

@@ -171,4 +171,49 @@ export class WorkoutController {
       });
     }
   );
+
+  // 특정 장소의 운동 기록 목록 조회 (인증 불필요)
+  public getWorkoutsByPlace = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const placeSeq = SeqSchema.parse(req.params.placeSeq);
+
+      // 페이징 파라미터 파싱
+      const paginationResult = CursorPaginationSchema.safeParse({
+        limit: req.query.limit || 12,
+        cursor: req.query.cursor || null,
+      });
+      if (!paginationResult.success) {
+        throw new CustomError(
+          "페이징 파라미터가 유효하지 않습니다.",
+          400,
+          "WorkoutController.getWorkoutRecordsByNickname",
+          paginationResult.error.errors.map((err) => ({
+            message: err.message,
+            path: err.path.map((p) => p.toString()),
+          }))
+        );
+      }
+      const { limit, cursor } = paginationResult.data;
+      // 운동 기록 조회
+      const result = await this.workoutService.getWorkoutsOfTheDaysByPlaceId(
+        placeSeq,
+        limit,
+        cursor
+      );
+
+      res.status(200).json(result);
+    }
+  );
+
+  // 장소 ID로 운동 기록 총 개수 조회 (인증 불필요)
+  public getWorkoutOfTheDayCountByPlaceId = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const placeSeq: number = SeqSchema.parse(req.params.placeSeq);
+      const count = await this.workoutService.getWorkoutOfTheDayCountByPlaceId(
+        placeSeq
+      );
+
+      res.status(200).json({ count });
+    }
+  );
 }

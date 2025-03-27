@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
 import { WorkoutPlaceService } from "../services/WorkoutPlaceService";
 import { CustomError } from "../utils/customError";
-import { ZodError } from "zod";
 import { ControllerUtil } from "../utils/controllerUtil";
 
 export class WorkoutPlaceController {

@@ -209,7 +209,7 @@ export class WorkoutService {
       .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
       .leftJoin("workout.workoutPlace", "workoutPlace")
       .addSelect("workoutPlace.placeName")
-      .orderBy("workout.workoutOfTheDaySeq", "DESC");
+      .orderBy("workout.recordDate", "DESC");
 
     // 커서가 있으면 해당 커서 이후의 데이터만 조회
     if (cursor) {
@@ -523,5 +523,104 @@ export class WorkoutService {
         errors,
       };
     }
+  }
+
+  // 장소 ID로 커서 기반 페이징된 운동 기록 가져오기
+  @ErrorDecorator("WorkoutService.getWorkoutsOfTheDaysByPlaceId")
+  async getWorkoutsOfTheDaysByPlaceId(
+    placeSeq: number,
+    limit: number = 12,
+    cursor: number | null = null
+  ): Promise<{
+    workouts: WorkoutOfTheDay[];
+    nextCursor: number | null;
+    placeInfo: {
+      placeName: string;
+      addressName: string | null;
+      roadAddressName: string | null;
+    };
+    limit: number;
+  }> {
+    if (limit < 1) limit = 12;
+
+    const place = await this.workoutPlaceRepository.findOne({
+      where: { workoutPlaceSeq: placeSeq },
+    });
+
+    if (!place) {
+      throw new CustomError(
+        "해당 장소를 찾을 수 없습니다.",
+        404,
+        "WorkoutService.getWorkoutsOfTheDaysByPlaceId"
+      );
+    }
+
+    const query = this.workoutRepository
+      .createQueryBuilder("workout")
+      .select([
+        "workout.workoutOfTheDaySeq",
+        "workout.workoutPhoto",
+        "workout.mainExerciseType",
+        "workout.recordDate",
+        "workout.workoutLikeCount",
+      ])
+      .leftJoin("workout.user", "user")
+      .addSelect(["user.userNickname", "user.profileImageUrl"])
+      .leftJoin("workout.workoutPlace", "place")
+      .addSelect("place.placeName")
+      .where("place.workoutPlaceSeq = :placeSeq", { placeSeq })
+      .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
+      .orderBy("workout.recordDate", "DESC");
+
+    if (cursor) {
+      const cursorWorkout = await this.workoutRepository.findOne({
+        where: { workoutOfTheDaySeq: cursor },
+      });
+      query.andWhere("workout.recordDate < :cursorDate", {
+        cursorDate: cursorWorkout?.recordDate,
+      });
+    }
+
+    const workouts = await query.take(limit).getMany();
+    const nextCursor =
+      workouts.length === limit
+        ? workouts[workouts.length - 1].workoutOfTheDaySeq
+        : null;
+
+    return {
+      workouts,
+      nextCursor,
+      placeInfo: {
+        placeName: place.placeName,
+        addressName: place.addressName,
+        roadAddressName: place.roadAddressName,
+      },
+      limit,
+    };
+  }
+  //장소 ID로 운동 기록 총 개수 조회
+  @ErrorDecorator("WorkoutService.getWorkoutOfTheDayCountByPlaceId")
+  async getWorkoutOfTheDayCountByPlaceId(placeSeq: number): Promise<number> {
+    const placeRepository = this.dataSource.getRepository(WorkoutPlace);
+    const place = await placeRepository.findOne({
+      where: { workoutPlaceSeq: placeSeq },
+    });
+
+    if (!place) {
+      throw new CustomError(
+        "장소를 찾을 수 없습니다.",
+        404,
+        "WorkoutService.getWorkoutOfTheDayCountByPlaceId"
+      );
+    }
+
+    const count = await this.workoutRepository.count({
+      where: {
+        workoutPlace: { workoutPlaceSeq: place.workoutPlaceSeq },
+        isDeleted: 0,
+      },
+    });
+
+    return count;
   }
 }
