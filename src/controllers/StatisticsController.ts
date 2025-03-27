@@ -7,6 +7,7 @@ import { BodyLogStatsFilterSchema } from "../schema/BodyLogSchema";
 import {
   ExerciseWeightStatsFilterSchema,
   CardioStatsFilterSchema,
+  BodyPartVolumeStatsFilterSchema,
 } from "../schema/WorkoutSchema";
 
 export class StatisticsController {
@@ -116,6 +117,41 @@ export class StatisticsController {
       }
 
       const stats = await this.statisticsService.getCardioStats(
+        userSeq,
+        filterResult.data
+      );
+
+      res.status(200).json(stats);
+    }
+  );
+
+  /**
+   * 운동 부위별 볼륨 통계 조회 (인증 필요)
+   */
+  public getBodyPartVolumeStats = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+
+      // 필터 옵션 파싱
+      const filterResult = BodyPartVolumeStatsFilterSchema.safeParse({
+        period: req.query.period || undefined,
+        interval: req.query.interval || undefined,
+        bodyPart: req.query.bodyPart || undefined,
+      });
+
+      if (!filterResult.success) {
+        throw new CustomError(
+          "필터 옵션 유효성 검사 실패",
+          400,
+          "StatisticsController.getBodyPartVolumeStats",
+          filterResult.error.errors.map((err) => ({
+            message: err.message,
+            path: err.path.map((p) => p.toString()),
+          }))
+        );
+      }
+
+      const stats = await this.statisticsService.getBodyPartVolumeStats(
         userSeq,
         filterResult.data
       );

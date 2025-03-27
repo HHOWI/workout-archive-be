@@ -26,4 +26,11 @@ statisticsRouter.get(
   statisticsController.getCardioStats
 );
 
+// 운동 볼륨 통계 API (인증 필요)
+statisticsRouter.get(
+  "/body-part-volume-stats",
+  authenticateToken,
+  statisticsController.getBodyPartVolumeStats
+);
+
 export default statisticsRouter;

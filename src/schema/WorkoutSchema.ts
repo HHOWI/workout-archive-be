@@ -173,3 +173,20 @@ export const CardioStatsFilterSchema = z.object({
 });
 
 export type CardioStatsFilterDTO = z.infer<typeof CardioStatsFilterSchema>;
+
+// 운동 볼륨 통계 필터 스키마 추가
+export const BodyPartVolumeStatsFilterSchema = z.object({
+  period: z
+    .enum(["1months", "3months", "6months", "1year", "2years", "all"])
+    .default("3months"),
+  interval: z
+    .enum(["1week", "2weeks", "1month", "3months", "all"])
+    .default("1week"),
+  bodyPart: z
+    .enum(["chest", "back", "legs", "shoulders", "triceps", "biceps", "all"])
+    .default("chest"),
+});
+
+export type BodyPartVolumeStatsFilterDTO = z.infer<
+  typeof BodyPartVolumeStatsFilterSchema
+>;
