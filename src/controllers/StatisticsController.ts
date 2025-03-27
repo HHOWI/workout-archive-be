@@ -4,7 +4,10 @@ import { CustomError } from "../utils/customError";
 import { ControllerUtil } from "../utils/controllerUtil";
 import { StatisticsService } from "../services/StatisticsService";
 import { BodyLogStatsFilterSchema } from "../schema/BodyLogSchema";
-import { ExerciseWeightStatsFilterSchema } from "../schema/WorkoutSchema";
+import {
+  ExerciseWeightStatsFilterSchema,
+  CardioStatsFilterSchema,
+} from "../schema/WorkoutSchema";
 
 export class StatisticsController {
   private statisticsService = new StatisticsService();
@@ -75,6 +78,44 @@ export class StatisticsController {
       }
 
       const stats = await this.statisticsService.getExerciseWeightStats(
+        userSeq,
+        filterResult.data
+      );
+
+      res.status(200).json(stats);
+    }
+  );
+
+  /**
+   * 유산소 운동 통계 조회 (인증 필요)
+   */
+  public getCardioStats = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+
+      // 필터 옵션 파싱
+      const filterResult = CardioStatsFilterSchema.safeParse({
+        period: req.query.period || undefined,
+        exerciseSeqs: req.query.exerciseSeqs
+          ? Array.isArray(req.query.exerciseSeqs)
+            ? req.query.exerciseSeqs.map(Number)
+            : [Number(req.query.exerciseSeqs)]
+          : undefined,
+      });
+
+      if (!filterResult.success) {
+        throw new CustomError(
+          "필터 옵션 유효성 검사 실패",
+          400,
+          "StatisticsController.getCardioStats",
+          filterResult.error.errors.map((err) => ({
+            message: err.message,
+            path: err.path.map((p) => p.toString()),
+          }))
+        );
+      }
+
+      const stats = await this.statisticsService.getCardioStats(
         userSeq,
         filterResult.data
       );

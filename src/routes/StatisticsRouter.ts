@@ -19,4 +19,11 @@ statisticsRouter.get(
   statisticsController.getExerciseWeightStats
 );
 
+// 유산소 운동 통계 API (인증 필요)
+statisticsRouter.get(
+  "/cardio-stats",
+  authenticateToken,
+  statisticsController.getCardioStats
+);
+
 export default statisticsRouter;

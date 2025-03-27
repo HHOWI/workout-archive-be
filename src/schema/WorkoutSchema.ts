@@ -162,3 +162,14 @@ export const ExerciseWeightStatsFilterSchema = z.object({
 export type ExerciseWeightStatsFilterDTO = z.infer<
   typeof ExerciseWeightStatsFilterSchema
 >;
+
+// 유산소 운동 통계 필터 스키마 추가
+export const CardioStatsFilterSchema = z.object({
+  period: z
+    .enum(["1months", "3months", "6months", "1year", "2years", "all"])
+    .optional()
+    .default("3months"),
+  exerciseSeqs: z.array(z.number()).optional(),
+});
+
+export type CardioStatsFilterDTO = z.infer<typeof CardioStatsFilterSchema>;
