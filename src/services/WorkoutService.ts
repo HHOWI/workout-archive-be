@@ -538,6 +538,9 @@ export class WorkoutService {
       placeName: string;
       addressName: string | null;
       roadAddressName: string | null;
+      kakaoPlaceId: string | null;
+      x: number | null;
+      y: number | null;
     };
     limit: number;
   }> {
@@ -594,6 +597,9 @@ export class WorkoutService {
         placeName: place.placeName,
         addressName: place.addressName,
         roadAddressName: place.roadAddressName,
+        kakaoPlaceId: place.kakaoPlaceId,
+        x: place.x,
+        y: place.y,
       },
       limit,
     };
