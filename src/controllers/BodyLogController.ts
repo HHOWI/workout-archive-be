@@ -117,7 +117,7 @@ export class BodyLogController {
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
       const { bodyLogSeq } = req.params;
-
+      console.log("bodyLogSeq", bodyLogSeq);
       // 유효성 검사
       const result = SeqSchema.safeParse(Number(bodyLogSeq));
       if (!result.success) {

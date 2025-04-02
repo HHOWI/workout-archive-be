@@ -10,6 +10,9 @@ import {
   CreateCommentDTO,
   UpdateCommentDTO,
 } from "../dtos/CommentDTO";
+import { CreateNotificationDTO } from "../dtos/NotificationDTO";
+import { NotificationType } from "../entities/Notification";
+import { NotificationService } from "./NotificationService";
 import { FindOptionsWhere, IsNull } from "typeorm";
 
 export class CommentService {
@@ -18,6 +21,7 @@ export class CommentService {
   private workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
   private commentLikeRepository =
     AppDataSource.getRepository(WorkoutCommentLike);
+  private notificationService = new NotificationService();
 
   // 댓글 작성
   public async createComment(
@@ -37,9 +41,9 @@ export class CommentService {
       }
 
       // 워크아웃 확인
-      const workout = await this.workoutRepository.findOneBy({
-        workoutOfTheDaySeq,
-        isDeleted: 0,
+      const workout = await this.workoutRepository.findOne({
+        where: { workoutOfTheDaySeq, isDeleted: 0 },
+        relations: ["user"],
       });
       if (!workout) {
         throw new CustomError(
@@ -58,8 +62,9 @@ export class CommentService {
 
       // 부모 댓글이 있는 경우 (대댓글)
       if (commentData.parentCommentSeq) {
-        const parentComment = await this.commentRepository.findOneBy({
-          workoutCommentSeq: commentData.parentCommentSeq,
+        const parentComment = await this.commentRepository.findOne({
+          where: { workoutCommentSeq: commentData.parentCommentSeq },
+          relations: ["user"],
         });
         if (!parentComment) {
           throw new CustomError(
@@ -69,8 +74,41 @@ export class CommentService {
           );
         }
         newComment.parentComment = parentComment;
+
+        // 대댓글일 경우 부모 댓글 작성자에게 알림 생성
+        if (parentComment.user.userSeq !== userSeq) {
+          const notificationDto = new CreateNotificationDTO();
+          notificationDto.receiverSeq = parentComment.user.userSeq;
+          notificationDto.senderSeq = userSeq;
+          notificationDto.notificationType = NotificationType.REPLY;
+          notificationDto.notificationContent = `${
+            user.userNickname
+          }님이 회원님의 댓글에 답글을 달았습니다: "${commentData.content.substring(
+            0,
+            30
+          )}${commentData.content.length > 30 ? "..." : ""}"`;
+          notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
+          notificationDto.workoutCommentSeq = parentComment.workoutCommentSeq;
+          await this.notificationService.createNotification(notificationDto);
+        }
       } else {
         newComment.parentComment = null;
+
+        // 일반 댓글일 경우 오운완 작성자에게 알림 생성
+        if (workout.user.userSeq !== userSeq) {
+          const notificationDto = new CreateNotificationDTO();
+          notificationDto.receiverSeq = workout.user.userSeq;
+          notificationDto.senderSeq = userSeq;
+          notificationDto.notificationType = NotificationType.COMMENT;
+          notificationDto.notificationContent = `${
+            user.userNickname
+          }님이 회원님의 오운완에 댓글을 달았습니다: "${commentData.content.substring(
+            0,
+            30
+          )}${commentData.content.length > 30 ? "..." : ""}"`;
+          notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
+          await this.notificationService.createNotification(notificationDto);
+        }
       }
 
       // 댓글 저장
@@ -329,8 +367,9 @@ export class CommentService {
       }
 
       // 댓글 확인
-      const comment = await this.commentRepository.findOneBy({
-        workoutCommentSeq: commentSeq,
+      const comment = await this.commentRepository.findOne({
+        where: { workoutCommentSeq: commentSeq },
+        relations: ["user", "workoutOfTheDay"],
       });
       if (!comment) {
         throw new CustomError(
@@ -340,32 +379,49 @@ export class CommentService {
         );
       }
 
-      // 이미 좋아요 했는지 확인
+      // 이미 좋아요를 했는지 확인
       const existingLike = await this.commentLikeRepository.findOneBy({
         workoutComment: { workoutCommentSeq: commentSeq },
         user: { userSeq },
       });
 
-      let isLiked = false;
+      let isLiked: boolean;
 
       if (existingLike) {
         // 좋아요 취소
         await this.commentLikeRepository.remove(existingLike);
         comment.commentLikes = Math.max(0, comment.commentLikes - 1);
+        isLiked = false;
       } else {
         // 좋아요 추가
         const newLike = new WorkoutCommentLike();
         newLike.workoutComment = comment;
         newLike.user = user;
         await this.commentLikeRepository.save(newLike);
-        comment.commentLikes += 1;
+        comment.commentLikes++;
         isLiked = true;
+
+        // 댓글 작성자에게 좋아요 알림 생성 (본인 제외)
+        if (comment.user.userSeq !== userSeq) {
+          const notificationDto = new CreateNotificationDTO();
+          notificationDto.receiverSeq = comment.user.userSeq;
+          notificationDto.senderSeq = userSeq;
+          notificationDto.notificationType = NotificationType.COMMENT_LIKE;
+          notificationDto.notificationContent = `${user.userNickname}님이 회원님의 댓글을 좋아합니다.`;
+          notificationDto.workoutOfTheDaySeq =
+            comment.workoutOfTheDay.workoutOfTheDaySeq;
+          notificationDto.workoutCommentSeq = commentSeq;
+          await this.notificationService.createNotification(notificationDto);
+        }
       }
 
-      // 댓글 좋아요 수 업데이트
+      // 댓글 저장
       await this.commentRepository.save(comment);
 
-      return { isLiked, likeCount: comment.commentLikes };
+      return {
+        isLiked,
+        likeCount: comment.commentLikes,
+      };
     } catch (error) {
       if (error instanceof CustomError) {
         throw error;

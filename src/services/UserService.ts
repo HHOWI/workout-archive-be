@@ -27,6 +27,21 @@ export class UserService {
     return await this.userRepo.findOneBy({ userNickname });
   }
 
+  // 닉네임으로 사용자 시퀀스 조회
+  @ErrorDecorator("UserService.getUserSeqByNickname")
+  async getUserSeqByNickname(userNickname: string): Promise<number | null> {
+    const user = await this.userRepo.findOne({
+      where: { userNickname },
+      select: ["userSeq"],
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return user.userSeq;
+  }
+
   // 닉네임으로 로그인한 사용자와 프로필의 유저가 같은지 확인
   @ErrorDecorator("UserService.checkProfileOwnershipByNickname")
   async checkProfileOwnershipByNickname(

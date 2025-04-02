@@ -16,6 +16,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { deleteImage } from "../utils/fileUtiles";
 import { ExerciseWeightStatsFilterDTO } from "../schema/WorkoutSchema";
+import { WorkoutLikeService } from "./WorkoutLikeService";
 
 export class WorkoutService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
@@ -229,8 +230,9 @@ export class WorkoutService {
   // 특정 운동 기록 상세 조회
   @ErrorDecorator("WorkoutService.getWorkoutRecordDetail")
   async getWorkoutRecordDetail(
-    workoutOfTheDaySeq: number
-  ): Promise<WorkoutOfTheDay> {
+    workoutOfTheDaySeq: number,
+    userSeq?: number
+  ): Promise<any> {
     // 운동 기록 및 관련 데이터 조회 - 사용자 정보는 필요한 것만 선택적 조회
     const workout = await this.workoutRepository
       .createQueryBuilder("workout")
@@ -252,6 +254,26 @@ export class WorkoutService {
         "WorkoutService.getWorkoutRecordDetail"
       );
     }
+
+    // 좋아요 정보 추가
+    if (userSeq) {
+      // 워크아웃 좋아요 서비스를 가져옵니다
+      const workoutLikeService = new WorkoutLikeService();
+
+      // 현재 사용자의 좋아요 상태를 확인합니다
+      const isLiked = await workoutLikeService.getWorkoutLikeStatus(
+        userSeq,
+        workoutOfTheDaySeq
+      );
+
+      // 워크아웃 객체에 좋아요 상태를 추가합니다
+      (workout as any).isLiked = isLiked;
+    } else {
+      (workout as any).isLiked = false;
+    }
+
+    // 좋아요 카운트를 likeCount로도 복사 (프론트엔드 호환성)
+    (workout as any).likeCount = workout.workoutLikeCount || 0;
 
     return workout;
   }

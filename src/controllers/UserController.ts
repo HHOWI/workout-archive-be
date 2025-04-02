@@ -5,9 +5,13 @@ import { CustomError } from "../utils/customError";
 import { LoginSchema } from "../schema/UserSchema";
 import { LoginDTO } from "../dtos/UserDTO";
 import { ControllerUtil } from "../utils/controllerUtil";
+import { WorkoutService } from "../services/WorkoutService";
+import { FollowService } from "../services/FollowService";
 
 export class UserController {
   private userService = new UserService();
+  private workoutService = new WorkoutService();
+  private followService = new FollowService();
 
   // POST /users/login
   public loginUser = asyncHandler(
@@ -150,6 +154,90 @@ export class UserController {
       );
 
       res.json({ isOwner });
+    }
+  );
+
+  // GET /users/seq/:userNickname (닉네임으로 사용자 시퀀스 조회)
+  public getUserSeqByNickname = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const userNickname = req.params.userNickname;
+
+      const userSeq = await this.userService.getUserSeqByNickname(userNickname);
+
+      if (userSeq === null) {
+        throw new CustomError(
+          "사용자를 찾을 수 없습니다.",
+          404,
+          "UserController.getUserSeqByNickname"
+        );
+      }
+
+      res.json({ userSeq });
+    }
+  );
+
+  // GET /users/profile-info/:userNickname (통합 프로필 정보 조회)
+  public getProfileInfo = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const userNickname = req.params.userNickname;
+
+      // 비로그인 상태일 경우 isOwner를 false로 초기화
+      let isOwner = false;
+
+      try {
+        // 사용자 시퀀스 먼저 조회
+        const userSeq = await this.userService.getUserSeqByNickname(
+          userNickname
+        );
+
+        if (userSeq === null) {
+          throw new CustomError(
+            "사용자를 찾을 수 없습니다.",
+            404,
+            "UserController.getProfileInfo"
+          );
+        }
+
+        // 로그인 상태이면 프로필 소유권 확인
+        if (req.user) {
+          const loggedInUserSeq = req.user.userSeq;
+          // 직접 userSeq 비교로 소유권 확인 (더 명확하고 간단함)
+          isOwner = loggedInUserSeq === userSeq;
+        }
+
+        // 병렬로 필요한 정보 조회
+        const [imageUrl, workoutCount, followCounts] = await Promise.all([
+          this.userService.getProfileImage(userNickname),
+          this.workoutService.getWorkoutOfTheDayCountByNickname(userNickname),
+          this.followService.getFollowCounts(userSeq),
+        ]);
+
+        // 팔로잉 카운트에 사용자와 장소 팔로잉 합산
+        const totalFollowingCount =
+          followCounts.followingCount + followCounts.followingPlaceCount;
+
+        // 통합 응답 반환
+        res.json({
+          userNickname,
+          userSeq,
+          imageUrl,
+          workoutCount,
+          isOwner,
+          followCounts: {
+            followerCount: followCounts.followerCount,
+            followingCount: totalFollowingCount,
+          },
+        });
+      } catch (error) {
+        if (error instanceof CustomError) {
+          throw error;
+        }
+        throw new CustomError(
+          "프로필 정보 조회 중 오류가 발생했습니다.",
+          500,
+          "UserController.getProfileInfo"
+        );
+      }
     }
   );
 }

@@ -94,9 +94,13 @@ export class WorkoutController {
   public getWorkoutRecordDetail = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
+      // 로그인한 사용자 정보 (선택적)
+      const userSeq = req.user?.userSeq;
+
       // 운동 기록 가져오기
       const workout = await this.workoutService.getWorkoutRecordDetail(
-        workoutOfTheDaySeq
+        workoutOfTheDaySeq,
+        userSeq
       );
       res.status(200).json(workout);
     }

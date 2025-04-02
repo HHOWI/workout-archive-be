@@ -1,5 +1,6 @@
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { WorkoutOfTheDay } from "./WorkoutOfTheDay";
+import { PlaceFollow } from "./PlaceFollow";
 
 @Entity("WORKOUT_PLACE")
 export class WorkoutPlace {
@@ -59,4 +60,7 @@ export class WorkoutPlace {
 
   @OneToMany(() => WorkoutOfTheDay, (workout) => workout.workoutPlace)
   workouts!: WorkoutOfTheDay[];
+
+  @OneToMany(() => PlaceFollow, (follow) => follow.workoutPlace)
+  followers!: PlaceFollow[];
 }

@@ -1,10 +1,15 @@
 import { Router } from "express";
 import { WorkoutController } from "../controllers/WorkoutController";
-import { authenticateToken } from "../middlewares/auth";
+import { WorkoutLikeController } from "../controllers/WorkoutLikeController";
+import {
+  authenticateToken,
+  optionalAuthenticateToken,
+} from "../middlewares/auth";
 import { uploadPost } from "../middlewares/upload";
 
 const workoutRouter = Router();
 const workoutController = new WorkoutController();
+const workoutLikeController = new WorkoutLikeController();
 
 // 운동 기록 저장 API (인증 필요)
 workoutRouter.post(
@@ -63,6 +68,20 @@ workoutRouter.get(
 workoutRouter.get(
   "/places/:placeSeq/workout-records-count",
   workoutController.getWorkoutOfTheDayCountByPlaceId
+);
+
+// 워크아웃 좋아요 토글 API (인증 필요)
+workoutRouter.post(
+  "/workout-records/:workoutOfTheDaySeq/like",
+  authenticateToken,
+  (req, res) => workoutLikeController.toggleWorkoutLike(req, res)
+);
+
+// 워크아웃 좋아요 상태 조회 API (선택적 인증)
+workoutRouter.get(
+  "/workout-records/:workoutOfTheDaySeq/like",
+  optionalAuthenticateToken,
+  (req, res) => workoutLikeController.getWorkoutLikeStatus(req, res)
 );
 
 export default workoutRouter;

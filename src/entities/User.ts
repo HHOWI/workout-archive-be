@@ -10,6 +10,9 @@ import { WorkoutComment } from "./WorkoutComment";
 import { BodyLog } from "./BodyLog";
 import { WorkoutCommentLike } from "./WorkoutCommentLike";
 import { WorkoutLike } from "./WorkoutLike";
+import { UserFollow } from "./UserFollow";
+import { PlaceFollow } from "./PlaceFollow";
+import { Notification } from "./Notification";
 
 @Entity("USER")
 export class User {
@@ -79,4 +82,21 @@ export class User {
 
   @OneToMany(() => WorkoutLike, (like) => like.user)
   workoutLikes!: WorkoutLike[];
+
+  @OneToMany(() => UserFollow, (follow) => follow.follower)
+  following!: UserFollow[]; // 내가 팔로우하는 사람들
+
+  @OneToMany(() => UserFollow, (follow) => follow.following)
+  followers!: UserFollow[]; // 나를 팔로우하는 사람들
+
+  @OneToMany(() => PlaceFollow, (follow) => follow.user)
+  followingPlaces!: PlaceFollow[]; // 내가 팔로우하는 장소들
+
+  // 받은 알림
+  @OneToMany(() => Notification, (notification) => notification.receiver)
+  receivedNotifications!: Notification[];
+
+  // 보낸 알림
+  @OneToMany(() => Notification, (notification) => notification.sender)
+  sentNotifications!: Notification[];
 }

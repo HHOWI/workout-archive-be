@@ -28,5 +28,11 @@ userRouter.get(
   optionalAuthenticateToken,
   userController.checkProfileOwnership
 );
+userRouter.get("/seq/:userNickname", userController.getUserSeqByNickname);
+userRouter.get(
+  "/profile-info/:userNickname",
+  optionalAuthenticateToken,
+  userController.getProfileInfo
+);
 
 export default userRouter;

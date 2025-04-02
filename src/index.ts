@@ -12,6 +12,8 @@ import BodyLogRouter from "./routes/BodyLogRouter";
 import StatisticsRouter from "./routes/StatisticsRouter";
 import SearchRouter from "./routes/SearchRouter";
 import CommentRouter from "./routes/CommentRouter";
+import FollowRouter from "./routes/FollowRouter";
+import NotificationRouter from "./routes/NotificationRouter";
 import { setupImageCache } from "./utils/setupImageCache";
 import { processImage } from "./middlewares/imageProcessor";
 import { CacheManager } from "./utils/cacheManager";
@@ -19,8 +21,13 @@ import { Paths } from "./config/path";
 import registerRouter from "./routes/RegisterRouter";
 import { WorkoutCleanupScheduler } from "./batch/workoutCleanupScheduler";
 import { UserCleanupScheduler } from "./batch/userCleanupScheduler";
+import { createServer } from "http";
+import { SocketServerManager } from "./socket/SocketServer";
+import FeedRouter from "./routes/FeedRouter";
 
+// Express 앱 생성
 const app = express();
+const httpServer = createServer(app);
 
 setupImageCache();
 setInterval(() => {
@@ -34,7 +41,7 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL,
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -52,14 +59,23 @@ app.use("/register", registerRouter);
 app.use("/statistics", StatisticsRouter);
 app.use("/search", SearchRouter);
 app.use("/workouts", CommentRouter);
+app.use("/follow", FollowRouter);
+app.use("/notifications", NotificationRouter);
+app.use("/feed", FeedRouter);
 
 app.use(GlobalErrorHandler);
 
 AppDataSource.initialize()
   .then(() => {
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
+
+    // HTTP 서버 시작
+    httpServer.listen(PORT, () => {
+      console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
+
+      // 웹소켓 서버 초기화
+      SocketServerManager.getInstance(httpServer);
+      console.log("웹소켓 서버가 초기화되었습니다.");
 
       // 워크아웃 클린업 스케줄러 시작
       if (process.env.ENABLE_CLEANUP_SCHEDULER === "true") {
@@ -81,5 +97,5 @@ AppDataSource.initialize()
     });
   })
   .catch((error) => {
-    console.error("Error during Data Source initialization:", error);
+    console.error("Data Source 초기화 중 오류 발생:", error);
   });
