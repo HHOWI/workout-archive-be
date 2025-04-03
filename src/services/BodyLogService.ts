@@ -70,16 +70,35 @@ export class BodyLogService {
       .take(filter.limit)
       .skip(filter.offset);
 
-    if (filter.startDate) {
-      query.andWhere("bodyLog.recordDate >= :startDate", {
-        startDate: new Date(filter.startDate),
-      });
-    }
+    // yearMonth 필터가 있으면 해당 월의 데이터만 필터링
+    if (filter.yearMonth) {
+      const [year, month] = filter.yearMonth.split("-").map(Number);
+      const startDate = new Date(year, month - 1, 1); // 해당 월의 첫날 (0-indexed month)
+      const endDate = new Date(year, month, 0); // 해당 월의 마지막 날
 
-    if (filter.endDate) {
-      query.andWhere("bodyLog.recordDate <= :endDate", {
-        endDate: new Date(filter.endDate),
+      query.andWhere("bodyLog.recordDate >= :startOfMonth", {
+        startOfMonth: startDate,
       });
+      query.andWhere("bodyLog.recordDate <= :endOfMonth", {
+        endOfMonth: endDate,
+      });
+
+      console.log(
+        `필터링: ${year}년 ${month}월 (${startDate.toISOString()} ~ ${endDate.toISOString()})`
+      );
+    } else {
+      // 기존 날짜 필터 적용
+      if (filter.startDate) {
+        query.andWhere("bodyLog.recordDate >= :startDate", {
+          startDate: new Date(filter.startDate),
+        });
+      }
+
+      if (filter.endDate) {
+        query.andWhere("bodyLog.recordDate <= :endDate", {
+          endDate: new Date(filter.endDate),
+        });
+      }
     }
 
     const bodyLogs = await query.getMany();

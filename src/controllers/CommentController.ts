@@ -3,8 +3,10 @@ import asyncHandler from "express-async-handler";
 import { CustomError } from "../utils/customError";
 import { ControllerUtil } from "../utils/controllerUtil";
 import { CommentService } from "../services/CommentService";
+import { CommentLikeService } from "../services/CommentLikeService";
 import { SeqSchema } from "../schema/BaseSchema";
 import { z } from "zod";
+import { RepliesQuerySchema } from "../dtos/CommentDTO";
 
 // 댓글 생성 유효성 검사 스키마
 const CreateCommentSchema = z.object({
@@ -31,6 +33,7 @@ const CommentListQuerySchema = z.object({
 
 export class CommentController {
   private commentService = new CommentService();
+  private commentLikeService = new CommentLikeService();
 
   // 댓글 생성
   public createComment = asyncHandler(
@@ -71,31 +74,13 @@ export class CommentController {
     async (req: Request, res: Response): Promise<void> => {
       const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
 
-      // 인증된 사용자가 있는 경우
-      let userSeq: number | undefined;
-      try {
-        userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      } catch (error) {
-        // 인증되지 않은 경우 무시하고 계속 진행
-        userSeq = undefined;
-      }
+      // 페이지네이션 파라미터
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 10;
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-      // 페이징 파라미터 파싱
-      const queryResult = CommentListQuerySchema.safeParse(req.query);
-      if (!queryResult.success) {
-        throw new CustomError(
-          "쿼리 파라미터 유효성 검사 실패",
-          400,
-          "CommentController.getComments",
-          queryResult.error.errors.map((err) => ({
-            message: err.message,
-            path: err.path.map((p) => p.toString()),
-          }))
-        );
-      }
-
-      const { page, limit } = queryResult.data;
-      const comments = await this.commentService.getComments(
+      // 인증 여부와 상관없이 항상 getCommentsWithLikes 호출 (userSeq가 undefined일 수 있음)
+      const comments = await this.commentService.getCommentsWithLikes(
         workoutOfTheDaySeq,
         userSeq,
         page,
@@ -103,6 +88,39 @@ export class CommentController {
       );
 
       res.status(200).json(comments);
+    }
+  );
+
+  // 대댓글 목록 조회 (커서 기반 페이징)
+  public getReplies = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const commentSeq = SeqSchema.parse(req.params.commentSeq);
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+
+      // 쿼리 파라미터 유효성 검사
+      const validationResult = RepliesQuerySchema.safeParse(req.query);
+      if (!validationResult.success) {
+        throw new CustomError(
+          "유효성 검사 실패",
+          400,
+          "CommentController.getReplies",
+          validationResult.error.errors.map((err) => ({
+            message: err.message,
+            path: err.path.map((p) => p.toString()),
+          }))
+        );
+      }
+
+      const { cursor, limit } = validationResult.data;
+
+      const replies = await this.commentService.getReplies(
+        commentSeq,
+        userSeq,
+        cursor,
+        limit
+      );
+
+      res.status(200).json(replies);
     }
   );
 
@@ -160,17 +178,12 @@ export class CommentController {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
       const commentSeq = SeqSchema.parse(req.params.commentSeq);
 
-      const likeResult = await this.commentService.toggleCommentLike(
+      const result = await this.commentLikeService.toggleCommentLike(
         userSeq,
         commentSeq
       );
 
-      res.status(200).json({
-        message: likeResult.isLiked
-          ? "댓글에 좋아요를 추가했습니다."
-          : "댓글에 좋아요를 취소했습니다.",
-        ...likeResult,
-      });
+      res.status(200).json(result);
     }
   );
 }

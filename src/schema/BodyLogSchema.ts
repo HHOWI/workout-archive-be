@@ -51,6 +51,10 @@ export type SaveBodyLogDTO = z.infer<typeof SaveBodyLogSchema>;
 export const BodyLogFilterSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+  yearMonth: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, "YYYY-MM 형식이어야 합니다(예: 2023-05)")
+    .optional(),
   limit: z
     .number()
     .int("페이지당 항목 수는 정수여야 합니다.")

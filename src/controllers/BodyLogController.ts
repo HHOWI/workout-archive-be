@@ -65,6 +65,7 @@ export class BodyLogController {
       const filterResult = BodyLogFilterSchema.safeParse({
         startDate: req.query.startDate,
         endDate: req.query.endDate,
+        yearMonth: req.query.yearMonth,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
         offset: req.query.offset ? Number(req.query.offset) : undefined,
       });

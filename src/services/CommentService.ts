@@ -7,21 +7,38 @@ import { CustomError } from "../utils/customError";
 import {
   CommentListResponseDTO,
   CommentResponseDTO,
+  CommentBaseDTO,
   CreateCommentDTO,
   UpdateCommentDTO,
+  RepliesResponseDTO,
 } from "../dtos/CommentDTO";
 import { CreateNotificationDTO } from "../dtos/NotificationDTO";
 import { NotificationType } from "../entities/Notification";
 import { NotificationService } from "./NotificationService";
-import { FindOptionsWhere, IsNull } from "typeorm";
+import {
+  FindOptionsWhere,
+  IsNull,
+  Repository,
+  LessThan,
+  MoreThan,
+} from "typeorm";
+import { CommentLikeService } from "./CommentLikeService";
 
 export class CommentService {
-  private commentRepository = AppDataSource.getRepository(WorkoutComment);
-  private userRepository = AppDataSource.getRepository(User);
-  private workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
-  private commentLikeRepository =
-    AppDataSource.getRepository(WorkoutCommentLike);
+  private commentRepository: Repository<WorkoutComment>;
+  private userRepository: Repository<User>;
+  private workoutRepository: Repository<WorkoutOfTheDay>;
+  private commentLikeRepository: Repository<WorkoutCommentLike>;
   private notificationService = new NotificationService();
+  private commentLikeService = new CommentLikeService();
+
+  constructor() {
+    this.commentRepository = AppDataSource.getRepository(WorkoutComment);
+    this.userRepository = AppDataSource.getRepository(User);
+    this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
+    this.commentLikeRepository =
+      AppDataSource.getRepository(WorkoutCommentLike);
+  }
 
   // 댓글 작성
   public async createComment(
@@ -139,13 +156,15 @@ export class CommentService {
     }
   }
 
-  // 댓글 목록 조회
+  /**
+   * 댓글 목록을 조회합니다 (좋아요 정보 없음)
+   * 대댓글은 포함하지 않고 개수만 반환합니다.
+   */
   public async getComments(
     workoutOfTheDaySeq: number,
-    userSeq?: number,
     page: number = 1,
     limit: number = 10
-  ): Promise<CommentListResponseDTO> {
+  ): Promise<{ comments: CommentBaseDTO[]; totalCount: number }> {
     try {
       // 워크아웃 확인
       const workout = await this.workoutRepository.findOneBy({
@@ -168,70 +187,105 @@ export class CommentService {
 
       const [comments, totalCount] = await this.commentRepository.findAndCount({
         where,
-        relations: ["user", "childComments", "childComments.user"],
+        relations: ["user"],
         order: {
-          commentCreatedAt: "DESC",
+          commentCreatedAt: "ASC",
         },
         skip: (page - 1) * limit,
         take: limit,
       });
 
-      // 댓글에 좋아요 여부 추가
-      const commentsWithLikes: CommentResponseDTO[] = await Promise.all(
+      // 각 댓글의 대댓글 개수를 조회
+      const commentsWithReplyCounts = await Promise.all(
         comments.map(async (comment) => {
-          // 좋아요 여부 확인
-          let isLiked = false;
-          if (userSeq) {
-            const like = await this.commentLikeRepository.findOneBy({
-              workoutComment: { workoutCommentSeq: comment.workoutCommentSeq },
-              user: { userSeq },
-            });
-            isLiked = !!like;
-          }
+          const childCount = await this.commentRepository.count({
+            where: {
+              parentComment: { workoutCommentSeq: comment.workoutCommentSeq },
+            },
+          });
+          return { ...comment, childCommentsCount: childCount };
+        })
+      );
 
-          // 대댓글에 대한 좋아요 여부 확인
-          const childCommentsWithLikes = await Promise.all(
-            (comment.childComments || []).map(async (childComment) => {
-              let childIsLiked = false;
-              if (userSeq) {
-                const childLike = await this.commentLikeRepository.findOneBy({
-                  workoutComment: {
-                    workoutCommentSeq: childComment.workoutCommentSeq,
-                  },
-                  user: { userSeq },
-                });
-                childIsLiked = !!childLike;
-              }
-
-              return {
-                workoutCommentSeq: childComment.workoutCommentSeq,
-                commentContent: childComment.commentContent,
-                commentLikes: childComment.commentLikes,
-                commentCreatedAt: childComment.commentCreatedAt.toISOString(),
-                isLiked: childIsLiked,
-                user: {
-                  userSeq: childComment.user.userSeq,
-                  userNickname: childComment.user.userNickname,
-                  profileImageUrl: childComment.user.profileImageUrl || null,
-                },
-              };
-            })
-          );
-
+      // 기본 댓글 정보 구성 - commentLikes 필드 값 사용
+      const commentsBase: CommentBaseDTO[] = commentsWithReplyCounts.map(
+        (comment) => {
           return {
             workoutCommentSeq: comment.workoutCommentSeq,
             commentContent: comment.commentContent,
             commentLikes: comment.commentLikes,
             commentCreatedAt: comment.commentCreatedAt.toISOString(),
-            isLiked,
+            childCommentsCount: comment.childCommentsCount || 0,
             user: {
               userSeq: comment.user.userSeq,
               userNickname: comment.user.userNickname,
-              profileImageUrl: comment.user.profileImageUrl || null,
+              profileImageUrl:
+                comment.user.profileImageUrl ||
+                process.env.DEFAULT_PROFILE_IMAGE ||
+                null,
             },
-            childComments: childCommentsWithLikes,
           };
-        })
+        }
+      );
+
+      return {
+        comments: commentsBase,
+        totalCount,
+      };
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      throw new CustomError(
+        "댓글 목록 조회 중 오류가 발생했습니다.",
+        500,
+        "CommentService.getComments"
+      );
+    }
+  }
+
+  /**
+   * 댓글 목록을 조회하고 좋아요 정보를 포함합니다.
+   * 대댓글은 포함하지 않고 개수만 반환합니다.
+   */
+  public async getCommentsWithLikes(
+    workoutOfTheDaySeq: number,
+    userSeq: number | undefined,
+    page: number = 1,
+    limit: number = 20
+  ): Promise<CommentListResponseDTO> {
+    try {
+      // 기본 댓글 정보 조회
+      const { comments: commentsBase, totalCount } = await this.getComments(
+        workoutOfTheDaySeq,
+        page,
+        limit
+      );
+
+      // 모든 댓글 ID를 추출
+      const allCommentIds = commentsBase.map(
+        (comment) => comment.workoutCommentSeq
+      );
+
+      // 사용자가 제공된 경우, 일괄적으로 좋아요 정보 조회
+      let likeStatusMap: Record<number, boolean> = {};
+      if (userSeq) {
+        likeStatusMap = await this.commentLikeService.getBulkLikeStatus(
+          userSeq,
+          allCommentIds
+        );
+      }
+
+      // 좋아요 정보 추가
+      const commentsWithLikes: CommentResponseDTO[] = commentsBase.map(
+        (comment) => {
+          return {
+            ...comment,
+            isLiked: userSeq
+              ? likeStatusMap[comment.workoutCommentSeq] || false
+              : false,
+          };
+        }
       );
 
       return {
@@ -245,7 +299,111 @@ export class CommentService {
       throw new CustomError(
         "댓글 목록 조회 중 오류가 발생했습니다.",
         500,
-        "CommentService.getComments"
+        "CommentService.getCommentsWithLikes"
+      );
+    }
+  }
+
+  /**
+   * 특정 댓글의 대댓글 목록을 조회합니다.
+   * 커서 기반 페이징을 지원합니다.
+   */
+  public async getReplies(
+    parentCommentSeq: number,
+    userSeq: number | undefined,
+    cursor?: number,
+    limit: number = 10
+  ): Promise<RepliesResponseDTO> {
+    try {
+      // 부모 댓글 확인
+      const parentComment = await this.commentRepository.findOneBy({
+        workoutCommentSeq: parentCommentSeq,
+      });
+
+      if (!parentComment) {
+        throw new CustomError(
+          "댓글을 찾을 수 없습니다.",
+          404,
+          "CommentService.getReplies"
+        );
+      }
+
+      // 커서 기반 조회 조건 설정
+      let where: FindOptionsWhere<WorkoutComment> = {
+        parentComment: { workoutCommentSeq: parentCommentSeq },
+      };
+
+      // 커서가 있는 경우 커서 이후의 데이터 조회
+      if (cursor) {
+        where = {
+          ...where,
+          workoutCommentSeq: MoreThan(cursor),
+        };
+      }
+
+      // 대댓글 조회
+      const replies = await this.commentRepository.find({
+        where,
+        relations: ["user"],
+        order: {
+          commentCreatedAt: "ASC",
+          workoutCommentSeq: "ASC",
+        },
+        take: limit + 1, // 다음 페이지 존재 여부 확인을 위해 limit+1개 조회
+      });
+
+      // 다음 페이지 존재 여부 확인
+      const hasMore = replies.length > limit;
+      const repliesResult = replies.slice(0, limit); // limit 개수만큼만 반환
+      const nextCursor =
+        hasMore && repliesResult.length > 0
+          ? repliesResult[repliesResult.length - 1].workoutCommentSeq
+          : null;
+
+      // 댓글 ID 목록
+      const replyIds = repliesResult.map((reply) => reply.workoutCommentSeq);
+
+      // 사용자가 제공된 경우, 일괄적으로 좋아요 정보 조회
+      let likeStatusMap: Record<number, boolean> = {};
+      if (userSeq && replyIds.length > 0) {
+        likeStatusMap = await this.commentLikeService.getBulkLikeStatus(
+          userSeq,
+          replyIds
+        );
+      }
+
+      // 대댓글 정보 구성
+      const repliesDTO: CommentResponseDTO[] = repliesResult.map((reply) => ({
+        workoutCommentSeq: reply.workoutCommentSeq,
+        commentContent: reply.commentContent,
+        commentLikes: reply.commentLikes,
+        commentCreatedAt: reply.commentCreatedAt.toISOString(),
+        isLiked: userSeq
+          ? likeStatusMap[reply.workoutCommentSeq] || false
+          : false,
+        user: {
+          userSeq: reply.user.userSeq,
+          userNickname: reply.user.userNickname,
+          profileImageUrl:
+            reply.user.profileImageUrl ||
+            process.env.DEFAULT_PROFILE_IMAGE ||
+            null,
+        },
+      }));
+
+      return {
+        replies: repliesDTO,
+        nextCursor,
+        hasMore,
+      };
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      throw new CustomError(
+        "대댓글 목록 조회 중 오류가 발생했습니다.",
+        500,
+        "CommentService.getReplies"
       );
     }
   }
@@ -346,90 +504,6 @@ export class CommentService {
         "댓글 삭제 중 오류가 발생했습니다.",
         500,
         "CommentService.deleteComment"
-      );
-    }
-  }
-
-  // 댓글 좋아요 토글
-  public async toggleCommentLike(
-    userSeq: number,
-    commentSeq: number
-  ): Promise<{ isLiked: boolean; likeCount: number }> {
-    try {
-      // 사용자 확인
-      const user = await this.userRepository.findOneBy({ userSeq });
-      if (!user) {
-        throw new CustomError(
-          "사용자를 찾을 수 없습니다.",
-          404,
-          "CommentService.toggleCommentLike"
-        );
-      }
-
-      // 댓글 확인
-      const comment = await this.commentRepository.findOne({
-        where: { workoutCommentSeq: commentSeq },
-        relations: ["user", "workoutOfTheDay"],
-      });
-      if (!comment) {
-        throw new CustomError(
-          "댓글을 찾을 수 없습니다.",
-          404,
-          "CommentService.toggleCommentLike"
-        );
-      }
-
-      // 이미 좋아요를 했는지 확인
-      const existingLike = await this.commentLikeRepository.findOneBy({
-        workoutComment: { workoutCommentSeq: commentSeq },
-        user: { userSeq },
-      });
-
-      let isLiked: boolean;
-
-      if (existingLike) {
-        // 좋아요 취소
-        await this.commentLikeRepository.remove(existingLike);
-        comment.commentLikes = Math.max(0, comment.commentLikes - 1);
-        isLiked = false;
-      } else {
-        // 좋아요 추가
-        const newLike = new WorkoutCommentLike();
-        newLike.workoutComment = comment;
-        newLike.user = user;
-        await this.commentLikeRepository.save(newLike);
-        comment.commentLikes++;
-        isLiked = true;
-
-        // 댓글 작성자에게 좋아요 알림 생성 (본인 제외)
-        if (comment.user.userSeq !== userSeq) {
-          const notificationDto = new CreateNotificationDTO();
-          notificationDto.receiverSeq = comment.user.userSeq;
-          notificationDto.senderSeq = userSeq;
-          notificationDto.notificationType = NotificationType.COMMENT_LIKE;
-          notificationDto.notificationContent = `${user.userNickname}님이 회원님의 댓글을 좋아합니다.`;
-          notificationDto.workoutOfTheDaySeq =
-            comment.workoutOfTheDay.workoutOfTheDaySeq;
-          notificationDto.workoutCommentSeq = commentSeq;
-          await this.notificationService.createNotification(notificationDto);
-        }
-      }
-
-      // 댓글 저장
-      await this.commentRepository.save(comment);
-
-      return {
-        isLiked,
-        likeCount: comment.commentLikes,
-      };
-    } catch (error) {
-      if (error instanceof CustomError) {
-        throw error;
-      }
-      throw new CustomError(
-        "댓글 좋아요 처리 중 오류가 발생했습니다.",
-        500,
-        "CommentService.toggleCommentLike"
       );
     }
   }

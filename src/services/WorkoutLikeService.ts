@@ -90,8 +90,9 @@ export class WorkoutLikeService {
 
       // 워크아웃 좋아요 수 업데이트
       await this.workoutRepository.save(workout);
+      const likeCount = await this.getWorkoutLikeCount(workoutOfTheDaySeq);
 
-      return { isLiked, likeCount: workout.workoutLikeCount };
+      return { isLiked, likeCount };
     } catch (error) {
       if (error instanceof CustomError) {
         throw error;
@@ -125,6 +126,39 @@ export class WorkoutLikeService {
     } catch (error) {
       console.error("좋아요 상태 확인 중 오류:", error);
       return false;
+    }
+  }
+
+  /**
+   * 워크아웃 좋아요 수 조회
+   */
+  @ErrorDecorator("WorkoutLikeService.getWorkoutLikeCount")
+  public async getWorkoutLikeCount(
+    workoutOfTheDaySeq: number
+  ): Promise<number> {
+    try {
+      // 워크아웃 확인 - 좋아요 카운트 필드만 조회
+      const workout = await this.workoutRepository.findOne({
+        where: { workoutOfTheDaySeq, isDeleted: 0 },
+        select: ["workoutLikeCount"],
+      });
+
+      if (!workout) {
+        throw new CustomError(
+          "워크아웃을 찾을 수 없습니다.",
+          404,
+          "WorkoutLikeService.getWorkoutLikeCount"
+        );
+      }
+
+      // 저장된 좋아요 카운트 필드 반환
+      return workout.workoutLikeCount || 0;
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      console.error("좋아요 수 조회 중 오류:", error);
+      return 0;
     }
   }
 }

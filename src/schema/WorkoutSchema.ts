@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// 커서 기반 페이징 스키마
+// 기존 커서 기반 페이징 스키마 (ID 기반)
 export const CursorPaginationSchema = z.object({
   limit: z
     .string()
@@ -17,6 +17,42 @@ export const CursorPaginationSchema = z.object({
     .nullable()
     .optional(),
 });
+
+// 날짜 기반 커서 페이징 스키마 (날짜 + ID 기반)
+export const DateCursorPaginationSchema = z.object({
+  limit: z
+    .string()
+    .or(z.number())
+    .transform((val) => Number(val))
+    .refine((val) => !isNaN(val) && val >= 1 && val <= 100, {
+      message: "limit은 1에서 100 사이여야 합니다.",
+    })
+    .default("12"),
+  cursor: z.string().nullable().optional(),
+});
+
+// 커서 파싱 유틸리티 함수
+export const parseDateCursor = (
+  cursor: string | null
+): { date: Date | null; seq: number | null } => {
+  if (!cursor) return { date: null, seq: null };
+
+  try {
+    const [dateStr, seqStr] = cursor.split("_");
+    return {
+      date: new Date(dateStr),
+      seq: parseInt(seqStr, 10),
+    };
+  } catch (error) {
+    console.error("날짜 커서 파싱 오류:", error);
+    return { date: null, seq: null };
+  }
+};
+
+// 날짜 커서 생성 유틸리티 함수
+export const createDateCursor = (date: Date, seq: number): string => {
+  return `${date.toISOString()}_${seq}`;
+};
 
 export const WorkoutSetSchema = z
   .object({

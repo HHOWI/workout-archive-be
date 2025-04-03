@@ -5,16 +5,10 @@ import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { SeqSchema } from "../schema/BaseSchema";
 
 export class WorkoutLikeController {
-  private workoutLikeService: WorkoutLikeService;
-
-  constructor() {
-    this.workoutLikeService = new WorkoutLikeService();
-    this.toggleWorkoutLike = this.toggleWorkoutLike.bind(this);
-    this.getWorkoutLikeStatus = this.getWorkoutLikeStatus.bind(this);
-  }
+  private workoutLikeService = new WorkoutLikeService();
 
   @ErrorDecorator("WorkoutLikeController.toggleWorkoutLike")
-  async toggleWorkoutLike(req: Request, res: Response): Promise<void> {
+  public async toggleWorkoutLike(req: Request, res: Response): Promise<void> {
     const userSeq = req.user?.userSeq;
     const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
 
@@ -35,7 +29,10 @@ export class WorkoutLikeController {
   }
 
   @ErrorDecorator("WorkoutLikeController.getWorkoutLikeStatus")
-  async getWorkoutLikeStatus(req: Request, res: Response): Promise<void> {
+  public async getWorkoutLikeStatus(
+    req: Request,
+    res: Response
+  ): Promise<void> {
     const userSeq = req.user?.userSeq;
     const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
 
@@ -45,5 +42,16 @@ export class WorkoutLikeController {
     );
 
     res.status(200).json({ isLiked });
+  }
+
+  @ErrorDecorator("WorkoutLikeController.getWorkoutLikeCount")
+  public async getWorkoutLikeCount(req: Request, res: Response): Promise<void> {
+    const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
+
+    const likeCount = await this.workoutLikeService.getWorkoutLikeCount(
+      workoutOfTheDaySeq
+    );
+
+    res.status(200).json({ likeCount });
   }
 }

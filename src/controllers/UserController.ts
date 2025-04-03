@@ -215,7 +215,7 @@ export class UserController {
         // 팔로잉 카운트에 사용자와 장소 팔로잉 합산
         const totalFollowingCount =
           followCounts.followingCount + followCounts.followingPlaceCount;
-
+        console.log("totalFollowingCount", totalFollowingCount);
         // 통합 응답 반환
         res.json({
           userNickname,

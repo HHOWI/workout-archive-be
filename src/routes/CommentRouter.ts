@@ -43,4 +43,11 @@ commentRouter.post(
   commentController.toggleCommentLike
 );
 
+// 대댓글 목록 조회 API (인증 선택적)
+commentRouter.get(
+  "/comments/:commentSeq/replies",
+  optionalAuthenticateToken,
+  commentController.getReplies
+);
+
 export default commentRouter;

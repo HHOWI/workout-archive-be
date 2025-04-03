@@ -5,14 +5,17 @@ import { CustomError } from "../utils/customError";
 import {
   SaveWorkoutSchema,
   CursorPaginationSchema,
+  DateCursorPaginationSchema,
   UpdateWorkoutSchema,
 } from "../schema/WorkoutSchema";
 import { UserNicknameSchema } from "../schema/UserSchema";
 import { SeqSchema } from "../schema/BaseSchema";
 import { ControllerUtil } from "../utils/controllerUtil";
+import { WorkoutLikeService } from "../services/WorkoutLikeService";
 
 export class WorkoutController {
   private workoutService = new WorkoutService();
+  private workoutLikeService = new WorkoutLikeService();
 
   // 운동 기록 저장 (인증 필요)
   public saveWorkoutRecord = asyncHandler(
@@ -61,8 +64,8 @@ export class WorkoutController {
     async (req: Request, res: Response): Promise<void> => {
       const nickname: string = UserNicknameSchema.parse(req.params.nickname);
 
-      // 커서 기반 페이징 사용
-      const paginationResult = CursorPaginationSchema.safeParse({
+      // 날짜 기반 커서 페이징 사용
+      const paginationResult = DateCursorPaginationSchema.safeParse({
         limit: req.query.limit || 12,
         cursor: req.query.cursor || null,
       });
@@ -78,6 +81,7 @@ export class WorkoutController {
         );
       }
       const { limit, cursor } = paginationResult.data;
+
       // 닉네임으로 사용자 정보와 운동 기록 가져오기
       const result =
         await this.workoutService.getWorkoutRecordsByNicknameCursor(
@@ -94,15 +98,32 @@ export class WorkoutController {
   public getWorkoutRecordDetail = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
+
       // 로그인한 사용자 정보 (선택적)
-      const userSeq = req.user?.userSeq;
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
       // 운동 기록 가져오기
       const workout = await this.workoutService.getWorkoutRecordDetail(
-        workoutOfTheDaySeq,
-        userSeq
+        workoutOfTheDaySeq
       );
-      res.status(200).json(workout);
+
+      // 좋아요 정보 추가
+      let isLiked = false;
+      if (userSeq) {
+        // 현재 사용자의 좋아요 상태를 확인
+        isLiked = await this.workoutLikeService.getWorkoutLikeStatus(
+          userSeq,
+          workoutOfTheDaySeq
+        );
+      }
+
+      // 워크아웃 객체에 좋아요 정보를 추가
+      const workoutWithLikeInfo = {
+        ...workout,
+        isLiked,
+      };
+
+      res.status(200).json(workoutWithLikeInfo);
     }
   );
 
@@ -181,8 +202,8 @@ export class WorkoutController {
     async (req: Request, res: Response): Promise<void> => {
       const placeSeq = SeqSchema.parse(req.params.placeSeq);
 
-      // 페이징 파라미터 파싱
-      const paginationResult = CursorPaginationSchema.safeParse({
+      // 날짜 기반 페이징 파라미터 파싱
+      const paginationResult = DateCursorPaginationSchema.safeParse({
         limit: req.query.limit || 12,
         cursor: req.query.cursor || null,
       });
@@ -190,7 +211,7 @@ export class WorkoutController {
         throw new CustomError(
           "페이징 파라미터가 유효하지 않습니다.",
           400,
-          "WorkoutController.getWorkoutRecordsByNickname",
+          "WorkoutController.getWorkoutsByPlace",
           paginationResult.error.errors.map((err) => ({
             message: err.message,
             path: err.path.map((p) => p.toString()),
@@ -198,6 +219,7 @@ export class WorkoutController {
         );
       }
       const { limit, cursor } = paginationResult.data;
+
       // 운동 기록 조회
       const result = await this.workoutService.getWorkoutsOfTheDaysByPlaceId(
         placeSeq,

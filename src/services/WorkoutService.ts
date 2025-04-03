@@ -7,16 +7,8 @@ import { WorkoutPlace } from "../entities/WorkoutPlace";
 import { User } from "../entities/User";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
-import {
-  SaveWorkoutDTO,
-  ExerciseWeightStatsDTO,
-  ExerciseWeightStats,
-} from "../dtos/WorkoutDTO";
-import * as fs from "fs";
-import * as path from "path";
+import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
 import { deleteImage } from "../utils/fileUtiles";
-import { ExerciseWeightStatsFilterDTO } from "../schema/WorkoutSchema";
-import { WorkoutLikeService } from "./WorkoutLikeService";
 
 export class WorkoutService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
@@ -180,22 +172,50 @@ export class WorkoutService {
     return { details, mainExerciseType };
   }
 
-  // 커서 기반 페이징을 이용한 워크아웃 기록 조회
+  // 커서 기반 페이징을 이용한 워크아웃 기록 조회 (날짜 기반)
   @ErrorDecorator("WorkoutService.getWorkoutRecordsByNicknameCursor")
   async getWorkoutRecordsByNicknameCursor(
     nickname: string,
     limit: number = 12,
-    cursor: number | null = null
+    cursor: string | null = null
   ): Promise<{
     workouts: WorkoutOfTheDay[];
-    nextCursor: number | null;
+    nextCursor: string | null;
     limit: number;
   }> {
+    console.log(
+      `[WorkoutService] 닉네임 ${nickname}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
+    );
+
     // 유효성 검사 - 기본값 설정
     if (limit < 1) limit = 12;
 
+    // 커서 파싱
+    let cursorDate: Date | null = null;
+    let cursorSeq: number | null = null;
+
+    if (cursor) {
+      try {
+        const [dateStr, seqStr] = cursor.split("_");
+        cursorDate = new Date(dateStr);
+        cursorSeq = parseInt(seqStr, 10);
+
+        if (isNaN(cursorDate.getTime()) || isNaN(cursorSeq)) {
+          throw new Error("Invalid cursor format");
+        }
+
+        console.log(
+          `[WorkoutService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
+        );
+      } catch (error) {
+        console.error("커서 파싱 오류:", error);
+        cursorDate = null;
+        cursorSeq = null;
+      }
+    }
+
     // 쿼리 빌더 생성
-    const workoutsQuery = await this.workoutRepository
+    const workoutsQuery = this.workoutRepository
       .createQueryBuilder("workout")
       .select([
         "workout.workoutOfTheDaySeq",
@@ -210,29 +230,55 @@ export class WorkoutService {
       .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
       .leftJoin("workout.workoutPlace", "workoutPlace")
       .addSelect("workoutPlace.placeName")
-      .orderBy("workout.recordDate", "DESC");
+      .orderBy("workout.recordDate", "DESC")
+      .addOrderBy("workout.workoutOfTheDaySeq", "DESC"); // 2차 정렬 기준으로 ID 사용
 
     // 커서가 있으면 해당 커서 이후의 데이터만 조회
-    if (cursor) {
-      workoutsQuery.andWhere("workout.workoutOfTheDaySeq < :cursor", {
-        cursor,
-      });
+    if (cursorDate && cursorSeq) {
+      workoutsQuery.andWhere(
+        "(workout.recordDate < :cursorDate1 OR (workout.recordDate = :cursorDate2 AND workout.workoutOfTheDaySeq < :cursorSeq))",
+        {
+          cursorDate1: cursorDate,
+          cursorDate2: cursorDate,
+          cursorSeq,
+        }
+      );
     }
 
-    const workouts = await workoutsQuery.take(limit).getMany();
-    const nextCursor =
-      workouts.length === limit
-        ? workouts[workouts.length - 1].workoutOfTheDaySeq
-        : null;
+    // 총 레코드 수 가져오기 (디버깅용)
+    const totalCount = await workoutsQuery.getCount();
+    console.log(`[WorkoutService] 조건에 맞는 총 레코드 수: ${totalCount}`);
+
+    const workouts = await workoutsQuery.take(limit + 1).getMany();
+
+    let hasNextPage = false;
+    // limit+1개를 요청했을 때 실제로 limit+1개가 반환되면 다음 페이지가 있다는 의미
+    if (workouts.length > limit) {
+      hasNextPage = true;
+      workouts.pop(); // 마지막 항목 제거하여 정확히 limit 개수만 반환
+    }
+
+    // 날짜 + seq 형식의 다음 커서 생성
+    let nextCursor: string | null = null;
+    if (hasNextPage && workouts.length > 0) {
+      const lastWorkout = workouts[workouts.length - 1];
+      nextCursor = `${lastWorkout.recordDate.toISOString()}_${
+        lastWorkout.workoutOfTheDaySeq
+      }`;
+    }
+
+    console.log(
+      `[WorkoutService] 조회 결과 - 결과 개수: ${workouts.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
+    );
+
     return { workouts, nextCursor, limit };
   }
 
   // 특정 운동 기록 상세 조회
   @ErrorDecorator("WorkoutService.getWorkoutRecordDetail")
   async getWorkoutRecordDetail(
-    workoutOfTheDaySeq: number,
-    userSeq?: number
-  ): Promise<any> {
+    workoutOfTheDaySeq: number
+  ): Promise<WorkoutOfTheDay> {
     // 운동 기록 및 관련 데이터 조회 - 사용자 정보는 필요한 것만 선택적 조회
     const workout = await this.workoutRepository
       .createQueryBuilder("workout")
@@ -255,25 +301,10 @@ export class WorkoutService {
       );
     }
 
-    // 좋아요 정보 추가
-    if (userSeq) {
-      // 워크아웃 좋아요 서비스를 가져옵니다
-      const workoutLikeService = new WorkoutLikeService();
-
-      // 현재 사용자의 좋아요 상태를 확인합니다
-      const isLiked = await workoutLikeService.getWorkoutLikeStatus(
-        userSeq,
-        workoutOfTheDaySeq
-      );
-
-      // 워크아웃 객체에 좋아요 상태를 추가합니다
-      (workout as any).isLiked = isLiked;
-    } else {
-      (workout as any).isLiked = false;
+    if (workout && workout.user && !workout.user.profileImageUrl) {
+      workout.user.profileImageUrl =
+        process.env.DEFAULT_PROFILE_IMAGE || undefined;
     }
-
-    // 좋아요 카운트를 likeCount로도 복사 (프론트엔드 호환성)
-    (workout as any).likeCount = workout.workoutLikeCount || 0;
 
     return workout;
   }
@@ -547,15 +578,15 @@ export class WorkoutService {
     }
   }
 
-  // 장소 ID로 커서 기반 페이징된 운동 기록 가져오기
+  // 장소 ID로 커서 기반 페이징된 운동 기록 가져오기 (날짜 기반)
   @ErrorDecorator("WorkoutService.getWorkoutsOfTheDaysByPlaceId")
   async getWorkoutsOfTheDaysByPlaceId(
     placeSeq: number,
     limit: number = 12,
-    cursor: number | null = null
+    cursor: string | null = null
   ): Promise<{
     workouts: WorkoutOfTheDay[];
-    nextCursor: number | null;
+    nextCursor: string | null;
     placeInfo: {
       placeName: string;
       addressName: string | null;
@@ -566,6 +597,10 @@ export class WorkoutService {
     };
     limit: number;
   }> {
+    console.log(
+      `[WorkoutService] 장소 ID ${placeSeq}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
+    );
+
     if (limit < 1) limit = 12;
 
     const place = await this.workoutPlaceRepository.findOne({
@@ -578,6 +613,30 @@ export class WorkoutService {
         404,
         "WorkoutService.getWorkoutsOfTheDaysByPlaceId"
       );
+    }
+
+    // 커서 파싱
+    let cursorDate: Date | null = null;
+    let cursorSeq: number | null = null;
+
+    if (cursor) {
+      try {
+        const [dateStr, seqStr] = cursor.split("_");
+        cursorDate = new Date(dateStr);
+        cursorSeq = parseInt(seqStr, 10);
+
+        if (isNaN(cursorDate.getTime()) || isNaN(cursorSeq)) {
+          throw new Error("Invalid cursor format");
+        }
+
+        console.log(
+          `[WorkoutService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
+        );
+      } catch (error) {
+        console.error("커서 파싱 오류:", error);
+        cursorDate = null;
+        cursorSeq = null;
+      }
     }
 
     const query = this.workoutRepository
@@ -595,22 +654,45 @@ export class WorkoutService {
       .addSelect("place.placeName")
       .where("place.workoutPlaceSeq = :placeSeq", { placeSeq })
       .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
-      .orderBy("workout.recordDate", "DESC");
+      .orderBy("workout.recordDate", "DESC")
+      .addOrderBy("workout.workoutOfTheDaySeq", "DESC"); // 2차 정렬 기준으로 ID 사용
 
-    if (cursor) {
-      const cursorWorkout = await this.workoutRepository.findOne({
-        where: { workoutOfTheDaySeq: cursor },
-      });
-      query.andWhere("workout.recordDate < :cursorDate", {
-        cursorDate: cursorWorkout?.recordDate,
-      });
+    // 커서가 있으면 날짜와 ID 기준으로 조회
+    if (cursorDate && cursorSeq) {
+      query.andWhere(
+        "(workout.recordDate < :cursorDate1 OR (workout.recordDate = :cursorDate2 AND workout.workoutOfTheDaySeq < :cursorSeq))",
+        {
+          cursorDate1: cursorDate,
+          cursorDate2: cursorDate,
+          cursorSeq,
+        }
+      );
     }
 
-    const workouts = await query.take(limit).getMany();
-    const nextCursor =
-      workouts.length === limit
-        ? workouts[workouts.length - 1].workoutOfTheDaySeq
-        : null;
+    // 총 레코드 수 가져오기 (디버깅용)
+    const totalCount = await query.getCount();
+    console.log(`[WorkoutService] 조건에 맞는 총 레코드 수: ${totalCount}`);
+
+    const workouts = await query.take(limit + 1).getMany();
+
+    let hasNextPage = false;
+    if (workouts.length > limit) {
+      hasNextPage = true;
+      workouts.pop(); // 마지막 항목 제거하여 정확히 limit 개수만 반환
+    }
+
+    // 날짜 + seq 형식의 다음 커서 생성
+    let nextCursor: string | null = null;
+    if (hasNextPage && workouts.length > 0) {
+      const lastWorkout = workouts[workouts.length - 1];
+      nextCursor = `${lastWorkout.recordDate.toISOString()}_${
+        lastWorkout.workoutOfTheDaySeq
+      }`;
+    }
+
+    console.log(
+      `[WorkoutService] 조회 결과 - 결과 개수: ${workouts.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
+    );
 
     return {
       workouts,

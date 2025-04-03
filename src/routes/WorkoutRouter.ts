@@ -28,6 +28,7 @@ workoutRouter.get(
 // 특정 운동 기록 상세 조회 API (인증 불필요)
 workoutRouter.get(
   "/profiles/workout-records/:workoutOfTheDaySeq",
+  optionalAuthenticateToken,
   workoutController.getWorkoutRecordDetail
 );
 
@@ -82,6 +83,12 @@ workoutRouter.get(
   "/workout-records/:workoutOfTheDaySeq/like",
   optionalAuthenticateToken,
   (req, res) => workoutLikeController.getWorkoutLikeStatus(req, res)
+);
+
+// 특정 운동 기록 좋아요 수 조회 API
+workoutRouter.get(
+  "/workout-records/:workoutOfTheDaySeq/like-count",
+  workoutLikeController.getWorkoutLikeCount
 );
 
 export default workoutRouter;

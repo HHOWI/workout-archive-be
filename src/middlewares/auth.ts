@@ -47,7 +47,6 @@ export const optionalAuthenticateToken = (
 
   if (!token) {
     req.user = undefined;
-    res.setHeader("X-Token-Expired", "false");
     return next();
   }
 
@@ -57,12 +56,17 @@ export const optionalAuthenticateToken = (
       userId: string;
     };
     req.user = decoded;
-    res.setHeader("X-Token-Expired", "false"); // 유효한 토큰
     next();
   } catch (error) {
+    // 토큰이 유효하지 않거나 만료된 경우 req.user를 undefined로 설정하고 계속 진행
     req.user = undefined;
-    res.setHeader("X-Token-Expired", "true"); // 토큰 만료
-    res.clearCookie("auth_token", { httpOnly: true }); // 만료된 토큰 쿠키 삭제
+    // 만료된 토큰 쿠키 삭제 (선택적)
+    res.clearCookie("auth_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
     next();
   }
 };
