@@ -67,13 +67,23 @@ export class NotificationService {
       }
     }
 
-    // 관련 댓글 설정 (선택적)
+    // 관련 댓글 설정 (선택적) - 부모 댓글 또는 일반 댓글
     if (dto.workoutCommentSeq) {
       const comment = await this.commentRepo.findOneBy({
         workoutCommentSeq: dto.workoutCommentSeq,
       });
       if (comment) {
         notification.workoutComment = comment;
+      }
+    }
+
+    // 관련 대댓글 설정 (선택적) - 대댓글 알림일 경우
+    if (dto.replyCommentSeq) {
+      const replyComment = await this.commentRepo.findOneBy({
+        workoutCommentSeq: dto.replyCommentSeq,
+      });
+      if (replyComment) {
+        notification.replyComment = replyComment;
       }
     }
 
@@ -115,6 +125,10 @@ export class NotificationService {
       dto.workoutCommentSeq = notification.workoutComment.workoutCommentSeq;
     }
 
+    if (notification.replyComment) {
+      dto.replyCommentSeq = notification.replyComment.workoutCommentSeq;
+    }
+
     return dto;
   }
 
@@ -142,6 +156,7 @@ export class NotificationService {
       .leftJoinAndSelect("notification.sender", "sender")
       .leftJoinAndSelect("notification.workoutOfTheDay", "workoutOfTheDay")
       .leftJoinAndSelect("notification.workoutComment", "workoutComment")
+      .leftJoinAndSelect("notification.replyComment", "replyComment")
       .where("notification.receiver.userSeq = :userSeq", { userSeq })
       .orderBy("notification.notificationSeq", "DESC");
 
@@ -202,6 +217,7 @@ export class NotificationService {
       .leftJoinAndSelect("notification.sender", "sender")
       .leftJoinAndSelect("notification.workoutOfTheDay", "workoutOfTheDay")
       .leftJoinAndSelect("notification.workoutComment", "workoutComment")
+      .leftJoinAndSelect("notification.replyComment", "replyComment")
       .where("notification.receiver.userSeq = :userSeq", { userSeq })
       .andWhere("notification.isRead = :isRead", { isRead: 0 })
       .orderBy("notification.notificationSeq", "DESC");
@@ -363,7 +379,12 @@ export class NotificationService {
   ): Promise<NotificationDTO | null> {
     const notification = await this.notificationRepo.findOne({
       where: { notificationSeq, receiver: { userSeq } },
-      relations: ["sender", "workoutOfTheDay", "workoutComment"],
+      relations: [
+        "sender",
+        "workoutOfTheDay",
+        "workoutComment",
+        "replyComment",
+      ],
     });
 
     if (!notification) {

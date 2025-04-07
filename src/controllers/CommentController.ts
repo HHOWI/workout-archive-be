@@ -91,36 +91,63 @@ export class CommentController {
     }
   );
 
-  // 대댓글 목록 조회 (커서 기반 페이징)
+  // 대댓글 목록 조회
   public getReplies = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const commentSeq = SeqSchema.parse(req.params.commentSeq);
-      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const queryParams = RepliesQuerySchema.safeParse(req.query);
 
-      // 쿼리 파라미터 유효성 검사
-      const validationResult = RepliesQuerySchema.safeParse(req.query);
-      if (!validationResult.success) {
+      if (!queryParams.success) {
         throw new CustomError(
-          "유효성 검사 실패",
+          "유효하지 않은 쿼리 파라미터입니다.",
           400,
-          "CommentController.getReplies",
-          validationResult.error.errors.map((err) => ({
-            message: err.message,
-            path: err.path.map((p) => p.toString()),
-          }))
+          "CommentController.getReplies"
         );
       }
 
-      const { cursor, limit } = validationResult.data;
+      const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
+      const { cursor, limit } = queryParams.data;
 
-      const replies = await this.commentService.getReplies(
+      const result = await this.commentService.getReplies(
         commentSeq,
         userSeq,
         cursor,
         limit
       );
 
-      res.status(200).json(replies);
+      res.status(200).json(result);
+    }
+  );
+
+  // 단일 댓글 조회 (대댓글 포함)
+  public getComment = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const commentSeq = SeqSchema.parse(req.params.commentSeq);
+      const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
+
+      const comment = await this.commentService.getCommentWithReplies(
+        commentSeq,
+        userSeq
+      );
+
+      res.status(200).json(comment);
+    }
+  );
+
+  // 부모 댓글과 모든 대댓글 조회 (알림용)
+  public getParentCommentWithAllReplies = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const parentCommentSeq = SeqSchema.parse(req.params.parentCommentSeq);
+      const targetReplySeq = SeqSchema.parse(req.query.targetReplySeq);
+      const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
+
+      const comment = await this.commentService.getParentCommentWithAllReplies(
+        parentCommentSeq,
+        targetReplySeq,
+        userSeq
+      );
+
+      res.status(200).json(comment);
     }
   );
 

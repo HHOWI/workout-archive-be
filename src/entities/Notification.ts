@@ -16,6 +16,7 @@ export enum NotificationType {
   REPLY = "REPLY", // 내 댓글에 대댓글이 달림
   WORKOUT_LIKE = "WORKOUT_LIKE", // 내 오운완에 좋아요가 달림
   COMMENT_LIKE = "COMMENT_LIKE", // 내 댓글에 좋아요가 달림
+  REPLY_LIKE = "REPLY_LIKE", // 내 대댓글에 좋아요가 달림
   FOLLOW = "FOLLOW", // 새로운 팔로워가 생김
 }
 
@@ -64,8 +65,13 @@ export class Notification {
   @JoinColumn({ name: "WORKOUT_OF_THE_DAY_SEQ" })
   workoutOfTheDay?: WorkoutOfTheDay;
 
-  // 관련 댓글 (nullable)
+  // 관련 댓글 (nullable) - 부모 댓글 또는 일반 댓글
   @ManyToOne(() => WorkoutComment, { onDelete: "CASCADE", nullable: true })
   @JoinColumn({ name: "WORKOUT_COMMENT_SEQ" })
   workoutComment?: WorkoutComment;
+
+  // 관련 대댓글 (nullable) - REPLY 타입 알림에서 사용
+  @ManyToOne(() => WorkoutComment, { onDelete: "CASCADE", nullable: true })
+  @JoinColumn({ name: "REPLY_COMMENT_SEQ" })
+  replyComment?: WorkoutComment;
 }

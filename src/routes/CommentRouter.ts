@@ -50,4 +50,18 @@ commentRouter.get(
   commentController.getReplies
 );
 
+// 단일 댓글 조회 API (인증 선택적)
+commentRouter.get(
+  "/comments/:commentSeq",
+  optionalAuthenticateToken,
+  commentController.getComment
+);
+
+// 부모 댓글과 모든 대댓글 조회 API (알림용) (인증 선택적)
+commentRouter.get(
+  "/parent-comments/:parentCommentSeq/all-replies",
+  optionalAuthenticateToken,
+  commentController.getParentCommentWithAllReplies
+);
+
 export default commentRouter;

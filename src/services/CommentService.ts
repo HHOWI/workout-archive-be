@@ -92,6 +92,9 @@ export class CommentService {
         }
         newComment.parentComment = parentComment;
 
+        // 댓글 저장 - 대댓글 먼저 저장하여 ID 획득
+        const savedComment = await this.commentRepository.save(newComment);
+
         // 대댓글일 경우 부모 댓글 작성자에게 알림 생성
         if (parentComment.user.userSeq !== userSeq) {
           const notificationDto = new CreateNotificationDTO();
@@ -105,11 +108,29 @@ export class CommentService {
             30
           )}${commentData.content.length > 30 ? "..." : ""}"`;
           notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
-          notificationDto.workoutCommentSeq = parentComment.workoutCommentSeq;
+          notificationDto.workoutCommentSeq = parentComment.workoutCommentSeq; // 부모 댓글의 ID
+          notificationDto.replyCommentSeq = savedComment.workoutCommentSeq; // 대댓글의 ID
           await this.notificationService.createNotification(notificationDto);
         }
+
+        // 응답 DTO 생성
+        return {
+          workoutCommentSeq: savedComment.workoutCommentSeq,
+          commentContent: savedComment.commentContent,
+          commentLikes: savedComment.commentLikes,
+          commentCreatedAt: savedComment.commentCreatedAt.toISOString(),
+          user: {
+            userSeq: user.userSeq,
+            userNickname: user.userNickname,
+            profileImageUrl: user.profileImageUrl || null,
+          },
+          childComments: [],
+        };
       } else {
         newComment.parentComment = null;
+
+        // 댓글 저장
+        const savedComment = await this.commentRepository.save(newComment);
 
         // 일반 댓글일 경우 오운완 작성자에게 알림 생성
         if (workout.user.userSeq !== userSeq) {
@@ -124,26 +145,24 @@ export class CommentService {
             30
           )}${commentData.content.length > 30 ? "..." : ""}"`;
           notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
+          notificationDto.workoutCommentSeq = savedComment.workoutCommentSeq;
           await this.notificationService.createNotification(notificationDto);
         }
+
+        // 응답 DTO 생성
+        return {
+          workoutCommentSeq: savedComment.workoutCommentSeq,
+          commentContent: savedComment.commentContent,
+          commentLikes: savedComment.commentLikes,
+          commentCreatedAt: savedComment.commentCreatedAt.toISOString(),
+          user: {
+            userSeq: user.userSeq,
+            userNickname: user.userNickname,
+            profileImageUrl: user.profileImageUrl || null,
+          },
+          childComments: [],
+        };
       }
-
-      // 댓글 저장
-      const savedComment = await this.commentRepository.save(newComment);
-
-      // 응답 DTO 생성
-      return {
-        workoutCommentSeq: savedComment.workoutCommentSeq,
-        commentContent: savedComment.commentContent,
-        commentLikes: savedComment.commentLikes,
-        commentCreatedAt: savedComment.commentCreatedAt.toISOString(),
-        user: {
-          userSeq: user.userSeq,
-          userNickname: user.userNickname,
-          profileImageUrl: user.profileImageUrl || null,
-        },
-        childComments: [],
-      };
     } catch (error) {
       if (error instanceof CustomError) {
         throw error;
@@ -504,6 +523,233 @@ export class CommentService {
         "댓글 삭제 중 오류가 발생했습니다.",
         500,
         "CommentService.deleteComment"
+      );
+    }
+  }
+
+  /**
+   * 단일 댓글과 해당 댓글의 대댓글을 함께 조회합니다.
+   * 알림에서 클릭했을 때 사용하는 API입니다.
+   */
+  public async getCommentWithReplies(
+    commentSeq: number,
+    userSeq?: number
+  ): Promise<CommentResponseDTO> {
+    try {
+      // 댓글 조회
+      const comment = await this.commentRepository.findOne({
+        where: { workoutCommentSeq: commentSeq },
+        relations: ["user", "workoutOfTheDay"],
+      });
+
+      if (!comment) {
+        throw new CustomError(
+          "댓글을 찾을 수 없습니다.",
+          404,
+          "CommentService.getCommentWithReplies"
+        );
+      }
+
+      // 대댓글 목록 조회 (최대 5개)
+      const replies = await this.commentRepository.find({
+        where: { parentComment: { workoutCommentSeq: commentSeq } },
+        relations: ["user"],
+        order: { commentCreatedAt: "ASC" },
+        take: 5,
+      });
+
+      // 대댓글 총 개수 조회
+      const childCount = await this.commentRepository.count({
+        where: { parentComment: { workoutCommentSeq: commentSeq } },
+      });
+
+      // 좋아요 상태 확인
+      let isLiked = false;
+      if (userSeq) {
+        const like = await this.commentLikeRepository.findOne({
+          where: {
+            workoutComment: { workoutCommentSeq: commentSeq },
+            user: { userSeq },
+          },
+        });
+        isLiked = !!like;
+      }
+
+      // 대댓글 좋아요 상태 조회
+      let replyIds: number[] = [];
+      if (replies.length > 0) {
+        replyIds = replies.map((reply) => reply.workoutCommentSeq);
+      }
+
+      let replyLikeStatusMap: Record<number, boolean> = {};
+      if (userSeq && replyIds.length > 0) {
+        replyLikeStatusMap = await this.commentLikeService.getBulkLikeStatus(
+          userSeq,
+          replyIds
+        );
+      }
+
+      // 대댓글 DTO 변환
+      const repliesDTO = replies.map((reply) => ({
+        workoutCommentSeq: reply.workoutCommentSeq,
+        commentContent: reply.commentContent,
+        commentLikes: reply.commentLikes,
+        commentCreatedAt: reply.commentCreatedAt.toISOString(),
+        isLiked: userSeq
+          ? replyLikeStatusMap[reply.workoutCommentSeq] || false
+          : false,
+        user: {
+          userSeq: reply.user.userSeq,
+          userNickname: reply.user.userNickname,
+          profileImageUrl:
+            reply.user.profileImageUrl ||
+            process.env.DEFAULT_PROFILE_IMAGE ||
+            null,
+        },
+      }));
+
+      // 응답 DTO 구성
+      const commentWithReplies: CommentResponseDTO = {
+        workoutCommentSeq: comment.workoutCommentSeq,
+        commentContent: comment.commentContent,
+        commentLikes: comment.commentLikes,
+        commentCreatedAt: comment.commentCreatedAt.toISOString(),
+        isLiked,
+        user: {
+          userSeq: comment.user.userSeq,
+          userNickname: comment.user.userNickname,
+          profileImageUrl:
+            comment.user.profileImageUrl ||
+            process.env.DEFAULT_PROFILE_IMAGE ||
+            null,
+        },
+        childComments: repliesDTO,
+        childCommentsCount: childCount,
+        workoutOfTheDaySeq: comment.workoutOfTheDay.workoutOfTheDaySeq,
+        hasMoreReplies: childCount > repliesDTO.length,
+      };
+
+      return commentWithReplies;
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      throw new CustomError(
+        "댓글 조회 중 오류가 발생했습니다.",
+        500,
+        "CommentService.getCommentWithReplies"
+      );
+    }
+  }
+
+  /**
+   * 부모 댓글과 모든 대댓글을 함께 조회합니다.
+   * 알림에서 대댓글로 이동할 때 사용하는 API입니다.
+   */
+  public async getParentCommentWithAllReplies(
+    parentCommentSeq: number,
+    targetReplySeq: number,
+    userSeq?: number
+  ): Promise<CommentResponseDTO> {
+    try {
+      // 부모 댓글 조회
+      const parentComment = await this.commentRepository.findOne({
+        where: { workoutCommentSeq: parentCommentSeq },
+        relations: ["user", "workoutOfTheDay"],
+      });
+
+      if (!parentComment) {
+        throw new CustomError(
+          "댓글을 찾을 수 없습니다.",
+          404,
+          "CommentService.getParentCommentWithAllReplies"
+        );
+      }
+
+      // 해당 부모 댓글의 모든 대댓글 조회
+      const replies = await this.commentRepository.find({
+        where: { parentComment: { workoutCommentSeq: parentCommentSeq } },
+        relations: ["user"],
+        order: { commentCreatedAt: "ASC" }, // 생성 시간 오름차순 정렬
+      });
+
+      // 대댓글 좋아요 상태 조회
+      let replyIds: number[] = [];
+      if (replies.length > 0) {
+        replyIds = replies.map((reply) => reply.workoutCommentSeq);
+      }
+
+      let replyLikeStatusMap: Record<number, boolean> = {};
+      if (userSeq && replyIds.length > 0) {
+        replyLikeStatusMap = await this.commentLikeService.getBulkLikeStatus(
+          userSeq,
+          replyIds
+        );
+      }
+
+      // 부모 댓글 좋아요 상태 확인
+      let isLiked = false;
+      if (userSeq) {
+        const like = await this.commentLikeRepository.findOne({
+          where: {
+            workoutComment: { workoutCommentSeq: parentCommentSeq },
+            user: { userSeq },
+          },
+        });
+        isLiked = !!like;
+      }
+
+      // 대댓글 DTO 변환
+      const repliesDTO = replies.map((reply) => ({
+        workoutCommentSeq: reply.workoutCommentSeq,
+        commentContent: reply.commentContent,
+        commentLikes: reply.commentLikes,
+        commentCreatedAt: reply.commentCreatedAt.toISOString(),
+        isLiked: userSeq
+          ? replyLikeStatusMap[reply.workoutCommentSeq] || false
+          : false,
+        user: {
+          userSeq: reply.user.userSeq,
+          userNickname: reply.user.userNickname,
+          profileImageUrl:
+            reply.user.profileImageUrl ||
+            process.env.DEFAULT_PROFILE_IMAGE ||
+            null,
+        },
+        isTarget: reply.workoutCommentSeq === targetReplySeq, // 대상 대댓글 표시
+      }));
+
+      // 응답 DTO 구성
+      const parentCommentWithReplies: CommentResponseDTO = {
+        workoutCommentSeq: parentComment.workoutCommentSeq,
+        commentContent: parentComment.commentContent,
+        commentLikes: parentComment.commentLikes,
+        commentCreatedAt: parentComment.commentCreatedAt.toISOString(),
+        isLiked,
+        user: {
+          userSeq: parentComment.user.userSeq,
+          userNickname: parentComment.user.userNickname,
+          profileImageUrl:
+            parentComment.user.profileImageUrl ||
+            process.env.DEFAULT_PROFILE_IMAGE ||
+            null,
+        },
+        childComments: repliesDTO,
+        childCommentsCount: replies.length,
+        workoutOfTheDaySeq: parentComment.workoutOfTheDay.workoutOfTheDaySeq,
+        hasMoreReplies: false, // 모든 대댓글을 불러오므로 항상 false
+        targetReplySeq: targetReplySeq, // 대상 대댓글 시퀀스
+      };
+
+      return parentCommentWithReplies;
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      throw new CustomError(
+        "댓글 조회 중 오류가 발생했습니다.",
+        500,
+        "CommentService.getParentCommentWithAllReplies"
       );
     }
   }

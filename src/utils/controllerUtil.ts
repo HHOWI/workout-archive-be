@@ -10,6 +10,12 @@ export class ControllerUtil {
     return SeqSchema.parse(userSeq);
   }
 
+  static getAuthenticatedUserIdOptional(req: Request): number | undefined {
+    const userSeq = req.user?.userSeq;
+    if (!userSeq) return undefined;
+    return SeqSchema.parse(userSeq);
+  }
+
   static parseJsonSafely(data: any, fieldName: string): any {
     if (typeof data === "string") {
       try {

@@ -11,6 +11,7 @@ export class NotificationDTO {
   notificationCreatedAt!: Date;
   workoutOfTheDaySeq?: number;
   workoutCommentSeq?: number;
+  replyCommentSeq?: number;
   notificationSeqs?: number[];
 }
 
@@ -30,4 +31,5 @@ export class CreateNotificationDTO {
   notificationContent!: string;
   workoutOfTheDaySeq?: number;
   workoutCommentSeq?: number;
+  replyCommentSeq?: number;
 }

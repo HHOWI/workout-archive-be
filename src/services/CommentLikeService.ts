@@ -195,11 +195,31 @@ export class CommentLikeService {
           const notificationDto = new CreateNotificationDTO();
           notificationDto.receiverSeq = comment.user.userSeq;
           notificationDto.senderSeq = userSeq;
-          notificationDto.notificationType = NotificationType.COMMENT_LIKE;
-          notificationDto.notificationContent = `${user.userNickname}님이 회원님의 댓글을 좋아합니다.`;
-          notificationDto.workoutOfTheDaySeq =
-            comment.workoutOfTheDay.workoutOfTheDaySeq;
-          notificationDto.workoutCommentSeq = commentSeq;
+
+          // 댓글 유형 확인 (대댓글 여부 확인)
+          const isReply = await this.commentRepository.findOne({
+            where: { workoutCommentSeq: commentSeq },
+            relations: ["parentComment"],
+          });
+
+          if (isReply && isReply.parentComment) {
+            // 대댓글인 경우
+            notificationDto.notificationType = NotificationType.REPLY_LIKE;
+            notificationDto.notificationContent = `${user.userNickname}님이 회원님의 답글을 좋아합니다.`;
+            notificationDto.workoutOfTheDaySeq =
+              comment.workoutOfTheDay.workoutOfTheDaySeq;
+            notificationDto.workoutCommentSeq =
+              isReply.parentComment.workoutCommentSeq; // 부모 댓글 ID
+            notificationDto.replyCommentSeq = commentSeq; // 대댓글 ID
+          } else {
+            // 일반 댓글인 경우
+            notificationDto.notificationType = NotificationType.COMMENT_LIKE;
+            notificationDto.notificationContent = `${user.userNickname}님이 회원님의 댓글을 좋아합니다.`;
+            notificationDto.workoutOfTheDaySeq =
+              comment.workoutOfTheDay.workoutOfTheDaySeq;
+            notificationDto.workoutCommentSeq = commentSeq;
+          }
+
           await this.notificationService.createNotification(notificationDto);
         }
       }

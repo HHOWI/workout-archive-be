@@ -29,6 +29,10 @@ export interface CommentBaseDTO {
 // 댓글 조회 응답 DTO 인터페이스 (좋아요 정보 포함)
 export interface CommentResponseDTO extends CommentBaseDTO {
   isLiked?: boolean;
+  workoutOfTheDaySeq?: number;
+  hasMoreReplies?: boolean;
+  isTarget?: boolean;
+  targetReplySeq?: number;
 }
 
 // 대댓글 작성 DTO 타입
