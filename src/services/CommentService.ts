@@ -753,4 +753,47 @@ export class CommentService {
       );
     }
   }
+
+  /**
+   * 특정 운동기록의 댓글 수를 조회합니다.
+   * 부모 댓글(일반 댓글)만 포함하고 자식 댓글(대댓글)은 제외합니다.
+   */
+  public async getCommentCountByWorkoutId(
+    workoutOfTheDaySeq: number
+  ): Promise<number> {
+    try {
+      // 워크아웃 확인
+      const workout = await this.workoutRepository.findOneBy({
+        workoutOfTheDaySeq,
+        isDeleted: 0,
+      });
+
+      if (!workout) {
+        throw new CustomError(
+          "워크아웃을 찾을 수 없습니다.",
+          404,
+          "CommentService.getCommentCountByWorkoutId"
+        );
+      }
+
+      // 최상위 댓글만 조회 (부모 댓글이 null인 댓글)
+      const count = await this.commentRepository.count({
+        where: {
+          workoutOfTheDay: { workoutOfTheDaySeq },
+          parentComment: IsNull(),
+        },
+      });
+
+      return count;
+    } catch (error) {
+      if (error instanceof CustomError) {
+        throw error;
+      }
+      throw new CustomError(
+        "댓글 수 조회 중 오류가 발생했습니다.",
+        500,
+        "CommentService.getCommentCountByWorkoutId"
+      );
+    }
+  }
 }

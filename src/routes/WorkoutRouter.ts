@@ -91,4 +91,11 @@ workoutRouter.get(
   workoutLikeController.getWorkoutLikeCount
 );
 
+// 월별 운동 날짜 목록 조회 API (인증 선택 사항)
+workoutRouter.get(
+  "/profiles/:nickname/workout-records/monthly",
+  optionalAuthenticateToken,
+  workoutController.getMonthlyWorkoutDates
+);
+
 export default workoutRouter;

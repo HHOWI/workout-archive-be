@@ -230,7 +230,7 @@ export class UserService {
 
   // 프로필 이미지 조회
   @ErrorDecorator("UserService.getProfileImage")
-  async getProfileImage(userNickname: string): Promise<string | null> {
+  async getProfileImage(userNickname: string): Promise<string> {
     const user = await this.userRepo.findOne({
       where: { userNickname },
       select: ["profileImageUrl"],
@@ -239,7 +239,7 @@ export class UserService {
     if (user?.profileImageUrl) {
       return user.profileImageUrl;
     } else {
-      return process.env.DEFAULT_PROFILE_IMAGE || null;
+      return process.env.DEFAULT_PROFILE_IMAGE || "";
     }
   }
 }

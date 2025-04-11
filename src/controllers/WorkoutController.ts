@@ -7,6 +7,7 @@ import {
   CursorPaginationSchema,
   DateCursorPaginationSchema,
   UpdateWorkoutSchema,
+  MonthlyWorkoutSchema,
 } from "../schema/WorkoutSchema";
 import { UserNicknameSchema } from "../schema/UserSchema";
 import { SeqSchema } from "../schema/BaseSchema";
@@ -100,7 +101,7 @@ export class WorkoutController {
       const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
 
       // 로그인한 사용자 정보 (선택적)
-      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
       // 운동 기록 가져오기
       const workout = await this.workoutService.getWorkoutRecordDetail(
@@ -240,6 +241,40 @@ export class WorkoutController {
       );
 
       res.status(200).json({ count });
+    }
+  );
+
+  /**
+   * 월별 운동 날짜 목록 조회
+   * 캘린더 뷰에서 사용할 특정 사용자의 월별 운동 날짜 목록과 통계를 반환합니다.
+   */
+  public getMonthlyWorkoutDates = asyncHandler(
+    async (req: Request, res: Response): Promise<void> => {
+      const { nickname } = req.params;
+      const { year, month } = req.query;
+
+      // 유효성 검사
+      const result = MonthlyWorkoutSchema.safeParse({
+        year: Number(year),
+        month: Number(month),
+      });
+
+      if (!result.success) {
+        throw new CustomError(
+          "유효하지 않은 년도 또는 월입니다.",
+          400,
+          "WorkoutController.getMonthlyWorkoutDates"
+        );
+      }
+
+      const response = await this.workoutService.getMonthlyWorkoutDates(
+        nickname,
+        result.data.year,
+        result.data.month
+      );
+
+      // 서비스에서 반환된 전체 응답을 그대로 전달 (workoutData와 stats 포함)
+      res.status(200).json(response);
     }
   );
 }

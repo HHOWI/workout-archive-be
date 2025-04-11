@@ -220,7 +220,7 @@ export class FollowService {
       profileImageUrl:
         follow.follower.profileImageUrl ||
         process.env.DEFAULT_PROFILE_IMAGE ||
-        null,
+        "",
     }));
   }
 
@@ -246,7 +246,7 @@ export class FollowService {
       profileImageUrl:
         follow.following.profileImageUrl ||
         process.env.DEFAULT_PROFILE_IMAGE ||
-        null,
+        "",
     }));
   }
 

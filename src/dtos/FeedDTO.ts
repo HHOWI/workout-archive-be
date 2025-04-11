@@ -7,6 +7,7 @@ export interface FeedItemDTO {
   workoutPhoto?: string | null;
   workoutDiary?: string | null;
   workoutLikeCount: number;
+  commentCount: number;
   workoutPlace?: {
     workoutPlaceSeq: number;
     placeName: string;

@@ -8,7 +8,8 @@ import { PlaceFollow } from "../entities/PlaceFollow";
 import { FeedItemDTO, FeedResponseDTO } from "../dtos/FeedDTO";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
-import { WorkoutLike } from "../entities/WorkoutLike";
+import { CommentService } from "./CommentService";
+import { WorkoutLikeService } from "./WorkoutLikeService";
 
 export class FeedService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
@@ -16,7 +17,8 @@ export class FeedService {
   private workoutPlaceRepository: Repository<WorkoutPlace>;
   private userFollowRepository: Repository<UserFollow>;
   private placeFollowRepository: Repository<PlaceFollow>;
-  private workoutLikeRepository: Repository<WorkoutLike>;
+  private commentService: CommentService;
+  private workoutLikeService: WorkoutLikeService;
 
   constructor() {
     this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
@@ -24,7 +26,8 @@ export class FeedService {
     this.workoutPlaceRepository = AppDataSource.getRepository(WorkoutPlace);
     this.userFollowRepository = AppDataSource.getRepository(UserFollow);
     this.placeFollowRepository = AppDataSource.getRepository(PlaceFollow);
-    this.workoutLikeRepository = AppDataSource.getRepository(WorkoutLike);
+    this.commentService = new CommentService();
+    this.workoutLikeService = new WorkoutLikeService();
   }
 
   @ErrorDecorator("FeedService.getFeed")
@@ -53,23 +56,12 @@ export class FeedService {
       (follow) => follow.workoutPlace.workoutPlaceSeq
     );
 
-    // 페이징을 위한 커서 워크아웃 가져오기
-    let cursorWorkout = null;
-    if (cursor !== null) {
-      cursorWorkout = await this.workoutRepository.findOne({
-        where: { workoutOfTheDaySeq: cursor },
-      });
-
-      if (!cursorWorkout) {
-        throw new CustomError(
-          "유효하지 않은 커서입니다.",
-          400,
-          "FeedService.getFeed"
-        );
-      }
+    // 사용자가 팔로우하는 유저나 장소가 없는 경우 빈 피드 반환
+    if (followingUserSeqs.length === 0 && followingPlaceSeqs.length === 0) {
+      return { feeds: [], nextCursor: null };
     }
 
-    // 피드 쿼리 구성 - 팔로우한 유저와 장소의 운동 기록을 가져옴
+    // 피드 쿼리 구성
     const query = this.workoutRepository
       .createQueryBuilder("workout")
       .select([
@@ -85,7 +77,9 @@ export class FeedService {
       .leftJoin("workout.workoutPlace", "workoutPlace")
       .addSelect(["workoutPlace.workoutPlaceSeq", "workoutPlace.placeName"])
       .where("workout.isDeleted = :isDeleted", { isDeleted: 0 })
+      // 자신의 게시물은 피드에서 제외
       .andWhere("user.userSeq != :currentUserSeq", { currentUserSeq: userSeq })
+      // 팔로우 조건 추가
       .andWhere(
         new Brackets((qb) => {
           if (followingUserSeqs.length > 0) {
@@ -93,22 +87,14 @@ export class FeedService {
               followingUserSeqs,
             });
           }
-
           if (followingPlaceSeqs.length > 0) {
+            const condition =
+              "workoutPlace.workoutPlaceSeq IN (:...followingPlaceSeqs)";
+            const params = { followingPlaceSeqs };
             if (followingUserSeqs.length > 0) {
-              qb.orWhere(
-                "workoutPlace.workoutPlaceSeq IN (:...followingPlaceSeqs)",
-                {
-                  followingPlaceSeqs,
-                }
-              );
+              qb.orWhere(condition, params);
             } else {
-              qb.where(
-                "workoutPlace.workoutPlaceSeq IN (:...followingPlaceSeqs)",
-                {
-                  followingPlaceSeqs,
-                }
-              );
+              qb.where(condition, params);
             }
           }
         })
@@ -116,46 +102,52 @@ export class FeedService {
       .orderBy("workout.workoutOfTheDaySeq", "DESC");
 
     // 커서 기반 페이징 적용
-    if (cursorWorkout) {
+    if (cursor !== null) {
       query.andWhere("workout.workoutOfTheDaySeq < :cursorSeq", {
-        cursorSeq: cursorWorkout.workoutOfTheDaySeq,
+        cursorSeq: cursor,
       });
     }
 
-    // 결과 가져오기
-    const workouts = await query.take(limit).getMany();
+    // 결과 가져오기 (중복 제거는 TypeORM에서 자동으로 처리)
+    const workouts = await query.take(limit + 1).getMany(); // 다음 페이지 확인 위해 +1
 
-    // 중복 제거 (이미 DB 쿼리에서 Seq로 DISTINCT 적용됨)
-    const uniqueSeqs = new Set<number>();
-    const uniqueWorkouts = workouts.filter((workout) => {
-      const isDuplicate = uniqueSeqs.has(workout.workoutOfTheDaySeq);
-      uniqueSeqs.add(workout.workoutOfTheDaySeq);
-      return !isDuplicate;
-    });
+    const hasNextPage = workouts.length > limit;
+    const currentWorkouts = workouts.slice(0, limit);
 
-    // 좋아요 상태 확인
-    const workoutSeqs = uniqueWorkouts.map((w) => w.workoutOfTheDaySeq);
-    const likes = await this.workoutLikeRepository.find({
-      where: {
-        user: { userSeq },
-        workoutOfTheDay: { workoutOfTheDaySeq: In(workoutSeqs) },
-      },
-    });
+    // 워크아웃 ID 목록 추출
+    const workoutSeqs = currentWorkouts.map((w) => w.workoutOfTheDaySeq);
 
-    const likedWorkouts = new Set(
-      likes.map((like) => like.workoutOfTheDay.workoutOfTheDaySeq)
-    );
+    // 좋아요 상태 및 댓글 수 일괄 조회
+    let likeStatusMap: Record<number, boolean> = {};
+    let commentCountMap: Record<number, number> = {};
+
+    if (workoutSeqs.length > 0) {
+      // 좋아요 상태 조회
+      likeStatusMap = await this.workoutLikeService.getBulkWorkoutLikeStatus(
+        userSeq,
+        workoutSeqs
+      );
+
+      // 댓글 수 조회
+      const commentCounts = await Promise.all(
+        workoutSeqs.map(async (seq) => ({
+          seq,
+          count: await this.commentService.getCommentCountByWorkoutId(seq),
+        }))
+      );
+      commentCountMap = commentCounts.reduce((acc, { seq, count }) => {
+        acc[seq] = count;
+        return acc;
+      }, {} as Record<number, number>);
+    }
 
     // 응답 DTO 매핑
-    const feedItems: FeedItemDTO[] = uniqueWorkouts.map((workout) => {
-      // 소스 결정 - 팔로우한 유저에서 온 것인지, 장소에서 온 것인지
+    const feedItems: FeedItemDTO[] = currentWorkouts.map((workout) => {
       const isFromUser = followingUserSeqs.includes(workout.user.userSeq);
       const isFromPlace =
         workout.workoutPlace &&
         followingPlaceSeqs.includes(workout.workoutPlace.workoutPlaceSeq);
-
-      let source: "user" | "place" = "user"; // 기본값 유저
-      // 유저와 장소 모두에서 온 경우 유저 우선
+      let source: "user" | "place" = "user";
       if (!isFromUser && isFromPlace) {
         source = "place";
       }
@@ -166,6 +158,7 @@ export class FeedService {
         workoutPhoto: workout.workoutPhoto,
         workoutDiary: workout.workoutDiary,
         workoutLikeCount: workout.workoutLikeCount,
+        commentCount: commentCountMap[workout.workoutOfTheDaySeq] ?? 0,
         workoutPlace: workout.workoutPlace
           ? {
               workoutPlaceSeq: workout.workoutPlace.workoutPlaceSeq,
@@ -181,15 +174,15 @@ export class FeedService {
             null,
         },
         mainExerciseType: workout.mainExerciseType,
-        isLiked: likedWorkouts.has(workout.workoutOfTheDaySeq),
+        isLiked: likeStatusMap[workout.workoutOfTheDaySeq] ?? false,
         source,
       };
     });
 
     // 다음 페이지 커서 결정
     const nextCursor =
-      uniqueWorkouts.length >= limit
-        ? uniqueWorkouts[uniqueWorkouts.length - 1].workoutOfTheDaySeq
+      hasNextPage && currentWorkouts.length > 0
+        ? currentWorkouts[currentWorkouts.length - 1].workoutOfTheDaySeq
         : null;
 
     return {

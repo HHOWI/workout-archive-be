@@ -77,7 +77,7 @@ export class CommentController {
       // 페이지네이션 파라미터
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
-      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
       // 인증 여부와 상관없이 항상 getCommentsWithLikes 호출 (userSeq가 undefined일 수 있음)
       const comments = await this.commentService.getCommentsWithLikes(

@@ -1,4 +1,4 @@
-import { Repository } from "typeorm";
+import { Repository, In } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { WorkoutLike } from "../entities/WorkoutLike";
 import { User } from "../entities/User";
@@ -159,6 +159,50 @@ export class WorkoutLikeService {
       }
       console.error("좋아요 수 조회 중 오류:", error);
       return 0;
+    }
+  }
+
+  /**
+   * 여러 워크아웃에 대한 좋아요 상태를 일괄 조회합니다.
+   */
+  @ErrorDecorator("WorkoutLikeService.getBulkWorkoutLikeStatus")
+  public async getBulkWorkoutLikeStatus(
+    userSeq: number,
+    workoutOfTheDaySeqs: number[]
+  ): Promise<Record<number, boolean>> {
+    if (workoutOfTheDaySeqs.length === 0) {
+      return {};
+    }
+
+    try {
+      // 좋아요 목록 조회
+      const likes = await this.likeRepository.find({
+        where: {
+          user: { userSeq },
+          workoutOfTheDay: { workoutOfTheDaySeq: In(workoutOfTheDaySeqs) },
+        },
+        relations: ["workoutOfTheDay"],
+      });
+
+      // 결과 맵 생성
+      const likeStatusMap: Record<number, boolean> = {};
+      for (const seq of workoutOfTheDaySeqs) {
+        likeStatusMap[seq] = false; // 기본값 false
+      }
+      for (const like of likes) {
+        if (like.workoutOfTheDay) {
+          likeStatusMap[like.workoutOfTheDay.workoutOfTheDaySeq] = true;
+        }
+      }
+
+      return likeStatusMap;
+    } catch (error) {
+      console.error("워크아웃 좋아요 상태 일괄 조회 중 오류:", error);
+      // 오류 발생 시 빈 맵 반환
+      return workoutOfTheDaySeqs.reduce((acc, seq) => {
+        acc[seq] = false;
+        return acc;
+      }, {} as Record<number, boolean>);
     }
   }
 }
