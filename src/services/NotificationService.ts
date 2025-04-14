@@ -11,9 +11,15 @@ import {
   NotificationDTO,
   NotificationCountDTO,
   MarkAsReadDTO,
+  NotificationsResponseDTO,
 } from "../dtos/NotificationDTO";
-import { SocketServerManager } from "../socket/SocketServer";
+import { NotificationMapper } from "../utils/notificationMapper";
+import { PaginationUtil } from "../utils/paginationUtil";
+import { SocketUtil } from "../utils/socketUtil";
 
+/**
+ * 알림 관련 비즈니스 로직을 처리하는 서비스 클래스
+ */
 export class NotificationService {
   private notificationRepo: Repository<Notification>;
   private userRepo: Repository<User>;
@@ -27,7 +33,9 @@ export class NotificationService {
     this.commentRepo = AppDataSource.getRepository(WorkoutComment);
   }
 
-  // 알림 생성
+  /**
+   * 새로운 알림을 생성합니다
+   */
   @ErrorDecorator("NotificationService.createNotification")
   async createNotification(
     dto: CreateNotificationDTO
@@ -91,59 +99,26 @@ export class NotificationService {
     const savedNotification = await this.notificationRepo.save(notification);
 
     // DTO로 변환하여 웹소켓을 통해 실시간 알림 전송
-    const notificationDto = this.mapNotificationToDto(savedNotification);
+    const notificationDto = NotificationMapper.toDTO(savedNotification);
 
-    try {
-      // 웹소켓 서버 인스턴스를 통해 실시간 알림 전송
-      const socketServer = SocketServerManager.getInstance();
-      socketServer.sendNotification(dto.receiverSeq, notificationDto);
-    } catch (error) {
-      console.error("실시간 알림 전송 중 오류 발생:", error);
-      // 실시간 알림 전송 실패는 전체 프로세스를 실패시키지 않음
-    }
+    // 웹소켓 유틸리티를 통해 실시간 알림 전송
+    SocketUtil.sendNotification(dto.receiverSeq, notificationDto);
 
     return savedNotification;
   }
 
-  // 알림 엔티티를 DTO로 변환하는 헬퍼 메서드
-  private mapNotificationToDto(notification: Notification): NotificationDTO {
-    const dto = new NotificationDTO();
-    dto.notificationSeq = notification.notificationSeq;
-    dto.notificationType = notification.notificationType;
-    dto.notificationContent = notification.notificationContent;
-    dto.senderSeq = notification.sender.userSeq;
-    dto.senderNickname = notification.sender.userNickname;
-    dto.senderProfileImageUrl = notification.sender.profileImageUrl;
-    dto.isRead = notification.isRead;
-    dto.notificationCreatedAt = notification.notificationCreatedAt;
-
-    if (notification.workoutOfTheDay) {
-      dto.workoutOfTheDaySeq = notification.workoutOfTheDay.workoutOfTheDaySeq;
-    }
-
-    if (notification.workoutComment) {
-      dto.workoutCommentSeq = notification.workoutComment.workoutCommentSeq;
-    }
-
-    if (notification.replyComment) {
-      dto.replyCommentSeq = notification.replyComment.workoutCommentSeq;
-    }
-
-    return dto;
-  }
-
-  // 사용자별 알림 목록 조회
+  /**
+   * 사용자별 알림 목록을 조회합니다
+   */
   @ErrorDecorator("NotificationService.getNotificationsByUserSeq")
   async getNotificationsByUserSeq(
     userSeq: number,
     limit: number = 20,
     cursor: number | null = null
-  ): Promise<{
-    notifications: NotificationDTO[];
-    totalCount: number;
-    nextCursor: number | null;
-  }> {
-    if (limit < 1) limit = 20;
+  ): Promise<NotificationsResponseDTO> {
+    // 페이지네이션 유틸리티를 활용한 파라미터 검증
+    limit = PaginationUtil.validateLimit(limit);
+    cursor = PaginationUtil.validateCursor(cursor);
 
     // 전체 개수 조회 (pagination과 별개로)
     const totalCount = await this.notificationRepo.count({
@@ -171,17 +146,15 @@ export class NotificationService {
     // 쿼리 실행 (limit만큼만 가져옴)
     const notifications = await queryBuilder.take(limit).getMany();
 
-    // WorkoutService와 동일한 방식으로 다음 페이지용 커서 계산
-    // 결과가 limit개 있으면 마지막 항목의 ID가 다음 커서
-    const nextCursor =
-      notifications.length === limit
-        ? notifications[notifications.length - 1].notificationSeq
-        : null;
-
-    // DTO로 변환
-    const notificationDTOs = notifications.map((notification) =>
-      this.mapNotificationToDto(notification)
+    // 다음 페이지용 커서 계산
+    const nextCursor = PaginationUtil.getNextCursor(
+      notifications,
+      limit,
+      (notification) => notification.notificationSeq
     );
+
+    // 매퍼를 사용하여 DTO로 변환
+    const notificationDTOs = NotificationMapper.toDTOList(notifications);
 
     return {
       notifications: notificationDTOs,
@@ -190,18 +163,18 @@ export class NotificationService {
     };
   }
 
-  // 사용자별 읽지 않은 알림 목록 조회
+  /**
+   * 사용자별 읽지 않은 알림 목록을 조회합니다
+   */
   @ErrorDecorator("NotificationService.getUnreadNotificationsByUserSeq")
   async getUnreadNotificationsByUserSeq(
     userSeq: number,
-    limit: number,
+    limit: number = 20,
     cursor: number | null = null
-  ): Promise<{
-    notifications: NotificationDTO[];
-    totalCount: number;
-    nextCursor: number | null;
-  }> {
-    if (limit < 1) limit = 20;
+  ): Promise<NotificationsResponseDTO> {
+    // 페이지네이션 유틸리티를 활용한 파라미터 검증
+    limit = PaginationUtil.validateLimit(limit);
+    cursor = PaginationUtil.validateCursor(cursor);
 
     // 읽지 않은 알림 전체 개수 조회
     const totalCount = await this.notificationRepo.count({
@@ -234,15 +207,14 @@ export class NotificationService {
     const notifications = await queryBuilder.take(limit).getMany();
 
     // 다음 페이지용 커서 계산
-    const nextCursor =
-      notifications.length === limit
-        ? notifications[notifications.length - 1].notificationSeq
-        : null;
-
-    // DTO로 변환
-    const notificationDTOs = notifications.map((notification) =>
-      this.mapNotificationToDto(notification)
+    const nextCursor = PaginationUtil.getNextCursor(
+      notifications,
+      limit,
+      (notification) => notification.notificationSeq
     );
+
+    // 매퍼를 사용하여 DTO로 변환
+    const notificationDTOs = NotificationMapper.toDTOList(notifications);
 
     return {
       notifications: notificationDTOs,
@@ -251,7 +223,9 @@ export class NotificationService {
     };
   }
 
-  // 알림 읽음 처리
+  /**
+   * 특정 알림을 읽음 처리합니다
+   */
   @ErrorDecorator("NotificationService.markAsRead")
   async markAsRead(dto: MarkAsReadDTO, userSeq: number): Promise<void> {
     const { notificationSeqs } = dto;
@@ -282,9 +256,14 @@ export class NotificationService {
 
     // 변경된 알림 저장
     await this.notificationRepo.save(notifications);
+
+    // 웹소켓으로 읽음 처리 이벤트 전송
+    SocketUtil.sendReadNotificationEvent(userSeq, notificationSeqs);
   }
 
-  // 모든 알림 읽음 처리
+  /**
+   * 모든 알림을 읽음 처리합니다
+   */
   @ErrorDecorator("NotificationService.markAllAsRead")
   async markAllAsRead(userSeq: number): Promise<void> {
     // 해당 사용자의 모든 읽지 않은 알림을 찾습니다
@@ -307,9 +286,14 @@ export class NotificationService {
 
     // 변경된 알림 저장
     await this.notificationRepo.save(notifications);
+
+    // 웹소켓으로 모든 알림 읽음 처리 이벤트 전송
+    SocketUtil.sendReadAllNotificationsEvent(userSeq);
   }
 
-  // 알림 삭제
+  /**
+   * 특정 알림을 삭제합니다
+   */
   @ErrorDecorator("NotificationService.deleteNotification")
   async deleteNotification(
     notificationSeq: number,
@@ -338,9 +322,14 @@ export class NotificationService {
     }
 
     await this.notificationRepo.remove(notification);
+
+    // 웹소켓으로 알림 삭제 이벤트 전송
+    SocketUtil.sendDeleteNotificationEvent(userSeq, notificationSeq);
   }
 
-  // 모든 알림 삭제
+  /**
+   * 모든 알림을 삭제합니다
+   */
   @ErrorDecorator("NotificationService.deleteAllNotifications")
   async deleteAllNotifications(userSeq: number): Promise<void> {
     // 사용자의 모든 알림 조회
@@ -355,9 +344,14 @@ export class NotificationService {
 
     // 모든 알림 삭제
     await this.notificationRepo.remove(notifications);
+
+    // 웹소켓으로 모든 알림 삭제 이벤트 전송
+    SocketUtil.sendDeleteAllNotificationsEvent(userSeq);
   }
 
-  // 알림 카운트 조회 (전체, 안읽은 것)
+  /**
+   * 알림 카운트를 조회합니다
+   */
   @ErrorDecorator("NotificationService.getNotificationCount")
   async getNotificationCount(userSeq: number): Promise<NotificationCountDTO> {
     const totalCount = await this.notificationRepo.count({
@@ -371,7 +365,9 @@ export class NotificationService {
     return { totalCount, unreadCount };
   }
 
-  // 특정 알림 조회
+  /**
+   * 특정 알림을 조회합니다
+   */
   @ErrorDecorator("NotificationService.getNotificationById")
   async getNotificationById(
     notificationSeq: number,
@@ -391,6 +387,6 @@ export class NotificationService {
       return null;
     }
 
-    return this.mapNotificationToDto(notification);
+    return NotificationMapper.toDTO(notification);
   }
 }

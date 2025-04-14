@@ -1,14 +1,19 @@
 import { Request, Response } from "express";
 import { BodyLogService } from "../services/BodyLogService";
 import asyncHandler from "express-async-handler";
-import { CustomError } from "../utils/customError";
+import { ControllerUtil } from "../utils/controllerUtil";
+import { ValidationUtil } from "../utils/validationUtil";
 import {
   SaveBodyLogSchema,
   BodyLogFilterSchema,
 } from "../schema/BodyLogSchema";
 import { SeqSchema } from "../schema/BaseSchema";
-import { ControllerUtil } from "../utils/controllerUtil";
+import { z } from "zod";
+import { BodyLogFilterDTO } from "../dtos/BodyLogDTO";
 
+/**
+ * 바디로그 관련 컨트롤러
+ */
 export class BodyLogController {
   private bodyLogService = new BodyLogService();
 
@@ -18,30 +23,15 @@ export class BodyLogController {
   public saveBodyLog = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      const { height, bodyWeight, muscleMass, bodyFat, recordDate } = req.body;
 
       // Zod 유효성 검사
-      const result = SaveBodyLogSchema.safeParse({
-        height,
-        bodyWeight,
-        muscleMass,
-        bodyFat,
-        recordDate,
-      });
+      const saveBodyLogDTO = ValidationUtil.validateBody(
+        req,
+        SaveBodyLogSchema,
+        "유효성 검사 실패",
+        "BodyLogController.saveBodyLog"
+      );
 
-      if (!result.success) {
-        throw new CustomError(
-          "유효성 검사 실패",
-          400,
-          "BodyLogController.saveBodyLog",
-          result.error.errors.map((err) => ({
-            message: err.message,
-            path: err.path.map((p) => p.toString()),
-          }))
-        );
-      }
-
-      const saveBodyLogDTO = result.data;
       const saveResult = await this.bodyLogService.saveBodyLog(
         userSeq,
         saveBodyLogDTO
@@ -61,30 +51,33 @@ export class BodyLogController {
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-      // 필터 옵션 파싱
-      const filterResult = BodyLogFilterSchema.safeParse({
-        startDate: req.query.startDate,
-        endDate: req.query.endDate,
-        yearMonth: req.query.yearMonth,
+      // 쿼리 파라미터 변환을 위한 전처리
+      const queryParams = {
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+        yearMonth: req.query.yearMonth as string | undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
         offset: req.query.offset ? Number(req.query.offset) : undefined,
-      });
+      };
 
-      if (!filterResult.success) {
-        throw new CustomError(
-          "필터 옵션 유효성 검사 실패",
-          400,
-          "BodyLogController.getBodyLogs",
-          filterResult.error.errors.map((err) => ({
-            message: err.message,
-            path: err.path.map((p) => p.toString()),
-          }))
-        );
-      }
+      // 필터 옵션 검증
+      const filter = ValidationUtil.validateCustom(
+        queryParams,
+        BodyLogFilterSchema,
+        "필터 옵션 유효성 검사 실패",
+        "BodyLogController.getBodyLogs"
+      );
+
+      // limit과 offset이 undefined인 경우 기본값 설정
+      const validFilter: BodyLogFilterDTO = {
+        ...filter,
+        limit: filter.limit ?? 10,
+        offset: filter.offset ?? 0,
+      };
 
       const bodyLogs = await this.bodyLogService.getBodyLogs(
         userSeq,
-        filterResult.data
+        validFilter
       );
 
       res.status(200).json(bodyLogs);
@@ -117,19 +110,17 @@ export class BodyLogController {
   public deleteBodyLog = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      const { bodyLogSeq } = req.params;
-      console.log("bodyLogSeq", bodyLogSeq);
-      // 유효성 검사
-      const result = SeqSchema.safeParse(Number(bodyLogSeq));
-      if (!result.success) {
-        throw new CustomError(
-          "유효하지 않은 바디로그 ID입니다.",
-          400,
-          "BodyLogController.deleteBodyLog"
-        );
-      }
 
-      await this.bodyLogService.deleteBodyLog(userSeq, result.data);
+      // 파라미터 검증
+      const { bodyLogSeq } = req.params;
+      const validatedSeq = ValidationUtil.validateCustom(
+        { seq: Number(bodyLogSeq) },
+        z.object({ seq: SeqSchema }),
+        "유효하지 않은 바디로그 ID입니다.",
+        "BodyLogController.deleteBodyLog"
+      );
+
+      await this.bodyLogService.deleteBodyLog(userSeq, validatedSeq.seq);
 
       res.status(200).json({
         message: "바디로그가 성공적으로 삭제되었습니다.",

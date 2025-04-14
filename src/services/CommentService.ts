@@ -40,6 +40,117 @@ export class CommentService {
       AppDataSource.getRepository(WorkoutCommentLike);
   }
 
+  /**
+   * 사용자 존재 여부 확인
+   */
+  private async verifyUser(userSeq: number): Promise<User> {
+    const user = await this.userRepository.findOneBy({ userSeq });
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "CommentService.verifyUser"
+      );
+    }
+    return user;
+  }
+
+  /**
+   * 워크아웃 존재 여부 확인
+   */
+  private async verifyWorkout(
+    workoutOfTheDaySeq: number
+  ): Promise<WorkoutOfTheDay> {
+    const workout = await this.workoutRepository.findOne({
+      where: { workoutOfTheDaySeq, isDeleted: 0 },
+      relations: ["user"],
+    });
+    if (!workout) {
+      throw new CustomError(
+        "워크아웃을 찾을 수 없습니다.",
+        404,
+        "CommentService.verifyWorkout"
+      );
+    }
+    return workout;
+  }
+
+  /**
+   * 댓글 존재 여부 확인
+   */
+  private async verifyComment(
+    commentSeq: number,
+    relations: string[] = []
+  ): Promise<WorkoutComment> {
+    const comment = await this.commentRepository.findOne({
+      where: { workoutCommentSeq: commentSeq },
+      relations,
+    });
+    if (!comment) {
+      throw new CustomError(
+        "댓글을 찾을 수 없습니다.",
+        404,
+        "CommentService.verifyComment"
+      );
+    }
+    return comment;
+  }
+
+  /**
+   * 알림 생성 헬퍼 메서드
+   */
+  private async createCommentNotification(
+    senderSeq: number,
+    receiverSeq: number,
+    notificationType: NotificationType,
+    content: string,
+    workoutOfTheDaySeq: number,
+    commentSeq: number,
+    replyCommentSeq?: number
+  ): Promise<void> {
+    const notificationDto = new CreateNotificationDTO();
+    notificationDto.receiverSeq = receiverSeq;
+    notificationDto.senderSeq = senderSeq;
+    notificationDto.notificationType = notificationType;
+    notificationDto.notificationContent = content;
+    notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
+    notificationDto.workoutCommentSeq = commentSeq;
+
+    if (replyCommentSeq) {
+      notificationDto.replyCommentSeq = replyCommentSeq;
+    }
+
+    await this.notificationService.createNotification(notificationDto);
+  }
+
+  /**
+   * 댓글 DTO 변환 (기본 정보)
+   */
+  private mapCommentToBaseDTO(comment: WorkoutComment): CommentBaseDTO {
+    return {
+      workoutCommentSeq: comment.workoutCommentSeq,
+      commentContent: comment.commentContent,
+      commentLikes: comment.commentLikes,
+      commentCreatedAt: comment.commentCreatedAt.toISOString(),
+      user: {
+        userSeq: comment.user.userSeq,
+        userNickname: comment.user.userNickname,
+        profileImageUrl:
+          comment.user.profileImageUrl ||
+          process.env.DEFAULT_PROFILE_IMAGE ||
+          null,
+      },
+    };
+  }
+
+  /**
+   * 내용 최대 길이 제한
+   */
+  private truncateContent(content: string, maxLength: number = 30): string {
+    if (content.length <= maxLength) return content;
+    return `${content.substring(0, maxLength)}...`;
+  }
+
   // 댓글 작성
   public async createComment(
     userSeq: number,
@@ -48,27 +159,10 @@ export class CommentService {
   ): Promise<CommentResponseDTO> {
     try {
       // 사용자 확인
-      const user = await this.userRepository.findOneBy({ userSeq });
-      if (!user) {
-        throw new CustomError(
-          "사용자를 찾을 수 없습니다.",
-          404,
-          "CommentService.createComment"
-        );
-      }
+      const user = await this.verifyUser(userSeq);
 
       // 워크아웃 확인
-      const workout = await this.workoutRepository.findOne({
-        where: { workoutOfTheDaySeq, isDeleted: 0 },
-        relations: ["user"],
-      });
-      if (!workout) {
-        throw new CustomError(
-          "워크아웃을 찾을 수 없습니다.",
-          404,
-          "CommentService.createComment"
-        );
-      }
+      const workout = await this.verifyWorkout(workoutOfTheDaySeq);
 
       // 댓글 객체 생성
       const newComment = new WorkoutComment();
@@ -79,38 +173,29 @@ export class CommentService {
 
       // 부모 댓글이 있는 경우 (대댓글)
       if (commentData.parentCommentSeq) {
-        const parentComment = await this.commentRepository.findOne({
-          where: { workoutCommentSeq: commentData.parentCommentSeq },
-          relations: ["user"],
-        });
-        if (!parentComment) {
-          throw new CustomError(
-            "부모 댓글을 찾을 수 없습니다.",
-            404,
-            "CommentService.createComment"
-          );
-        }
+        const parentComment = await this.verifyComment(
+          commentData.parentCommentSeq,
+          ["user"]
+        );
+
         newComment.parentComment = parentComment;
 
         // 댓글 저장 - 대댓글 먼저 저장하여 ID 획득
         const savedComment = await this.commentRepository.save(newComment);
 
-        // 대댓글일 경우 부모 댓글 작성자에게 알림 생성
+        // 대댓글일 경우 부모 댓글 작성자에게 알림 생성 (본인 제외)
         if (parentComment.user.userSeq !== userSeq) {
-          const notificationDto = new CreateNotificationDTO();
-          notificationDto.receiverSeq = parentComment.user.userSeq;
-          notificationDto.senderSeq = userSeq;
-          notificationDto.notificationType = NotificationType.REPLY;
-          notificationDto.notificationContent = `${
-            user.userNickname
-          }님이 회원님의 댓글에 답글을 달았습니다: "${commentData.content.substring(
-            0,
-            30
-          )}${commentData.content.length > 30 ? "..." : ""}"`;
-          notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
-          notificationDto.workoutCommentSeq = parentComment.workoutCommentSeq; // 부모 댓글의 ID
-          notificationDto.replyCommentSeq = savedComment.workoutCommentSeq; // 대댓글의 ID
-          await this.notificationService.createNotification(notificationDto);
+          const truncatedContent = this.truncateContent(commentData.content);
+
+          await this.createCommentNotification(
+            userSeq,
+            parentComment.user.userSeq,
+            NotificationType.REPLY,
+            `${user.userNickname}님이 회원님의 댓글에 답글을 달았습니다: "${truncatedContent}"`,
+            workoutOfTheDaySeq,
+            parentComment.workoutCommentSeq,
+            savedComment.workoutCommentSeq
+          );
         }
 
         // 응답 DTO 생성
@@ -132,21 +217,18 @@ export class CommentService {
         // 댓글 저장
         const savedComment = await this.commentRepository.save(newComment);
 
-        // 일반 댓글일 경우 오운완 작성자에게 알림 생성
+        // 일반 댓글일 경우 오운완 작성자에게 알림 생성 (본인 제외)
         if (workout.user.userSeq !== userSeq) {
-          const notificationDto = new CreateNotificationDTO();
-          notificationDto.receiverSeq = workout.user.userSeq;
-          notificationDto.senderSeq = userSeq;
-          notificationDto.notificationType = NotificationType.COMMENT;
-          notificationDto.notificationContent = `${
-            user.userNickname
-          }님이 회원님의 오운완에 댓글을 달았습니다: "${commentData.content.substring(
-            0,
-            30
-          )}${commentData.content.length > 30 ? "..." : ""}"`;
-          notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
-          notificationDto.workoutCommentSeq = savedComment.workoutCommentSeq;
-          await this.notificationService.createNotification(notificationDto);
+          const truncatedContent = this.truncateContent(commentData.content);
+
+          await this.createCommentNotification(
+            userSeq,
+            workout.user.userSeq,
+            NotificationType.COMMENT,
+            `${user.userNickname}님이 회원님의 오운완에 댓글을 달았습니다: "${truncatedContent}"`,
+            workoutOfTheDaySeq,
+            savedComment.workoutCommentSeq
+          );
         }
 
         // 응답 DTO 생성
@@ -186,17 +268,7 @@ export class CommentService {
   ): Promise<{ comments: CommentBaseDTO[]; totalCount: number }> {
     try {
       // 워크아웃 확인
-      const workout = await this.workoutRepository.findOneBy({
-        workoutOfTheDaySeq,
-        isDeleted: 0,
-      });
-      if (!workout) {
-        throw new CustomError(
-          "워크아웃을 찾을 수 없습니다.",
-          404,
-          "CommentService.getComments"
-        );
-      }
+      await this.verifyWorkout(workoutOfTheDaySeq);
 
       // 최상위 댓글만 조회 (부모 댓글이 null인 댓글)
       const where: FindOptionsWhere<WorkoutComment> = {
@@ -228,23 +300,10 @@ export class CommentService {
 
       // 기본 댓글 정보 구성 - commentLikes 필드 값 사용
       const commentsBase: CommentBaseDTO[] = commentsWithReplyCounts.map(
-        (comment) => {
-          return {
-            workoutCommentSeq: comment.workoutCommentSeq,
-            commentContent: comment.commentContent,
-            commentLikes: comment.commentLikes,
-            commentCreatedAt: comment.commentCreatedAt.toISOString(),
-            childCommentsCount: comment.childCommentsCount || 0,
-            user: {
-              userSeq: comment.user.userSeq,
-              userNickname: comment.user.userNickname,
-              profileImageUrl:
-                comment.user.profileImageUrl ||
-                process.env.DEFAULT_PROFILE_IMAGE ||
-                null,
-            },
-          };
-        }
+        (comment) => ({
+          ...this.mapCommentToBaseDTO(comment),
+          childCommentsCount: comment.childCommentsCount || 0,
+        })
       );
 
       return {
@@ -297,14 +356,12 @@ export class CommentService {
 
       // 좋아요 정보 추가
       const commentsWithLikes: CommentResponseDTO[] = commentsBase.map(
-        (comment) => {
-          return {
-            ...comment,
-            isLiked: userSeq
-              ? likeStatusMap[comment.workoutCommentSeq] || false
-              : false,
-          };
-        }
+        (comment) => ({
+          ...comment,
+          isLiked: userSeq
+            ? likeStatusMap[comment.workoutCommentSeq] || false
+            : false,
+        })
       );
 
       return {
@@ -335,17 +392,7 @@ export class CommentService {
   ): Promise<RepliesResponseDTO> {
     try {
       // 부모 댓글 확인
-      const parentComment = await this.commentRepository.findOneBy({
-        workoutCommentSeq: parentCommentSeq,
-      });
-
-      if (!parentComment) {
-        throw new CustomError(
-          "댓글을 찾을 수 없습니다.",
-          404,
-          "CommentService.getReplies"
-        );
-      }
+      await this.verifyComment(parentCommentSeq);
 
       // 커서 기반 조회 조건 설정
       let where: FindOptionsWhere<WorkoutComment> = {
@@ -393,21 +440,10 @@ export class CommentService {
 
       // 대댓글 정보 구성
       const repliesDTO: CommentResponseDTO[] = repliesResult.map((reply) => ({
-        workoutCommentSeq: reply.workoutCommentSeq,
-        commentContent: reply.commentContent,
-        commentLikes: reply.commentLikes,
-        commentCreatedAt: reply.commentCreatedAt.toISOString(),
+        ...this.mapCommentToBaseDTO(reply),
         isLiked: userSeq
           ? likeStatusMap[reply.workoutCommentSeq] || false
           : false,
-        user: {
-          userSeq: reply.user.userSeq,
-          userNickname: reply.user.userNickname,
-          profileImageUrl:
-            reply.user.profileImageUrl ||
-            process.env.DEFAULT_PROFILE_IMAGE ||
-            null,
-        },
       }));
 
       return {
@@ -435,18 +471,7 @@ export class CommentService {
   ): Promise<CommentResponseDTO> {
     try {
       // 댓글 찾기
-      const comment = await this.commentRepository.findOne({
-        where: { workoutCommentSeq: commentSeq },
-        relations: ["user"],
-      });
-
-      if (!comment) {
-        throw new CustomError(
-          "댓글을 찾을 수 없습니다.",
-          404,
-          "CommentService.updateComment"
-        );
-      }
+      const comment = await this.verifyComment(commentSeq, ["user"]);
 
       // 댓글 작성자 확인
       if (comment.user.userSeq !== userSeq) {
@@ -462,15 +487,7 @@ export class CommentService {
       const updatedComment = await this.commentRepository.save(comment);
 
       return {
-        workoutCommentSeq: updatedComment.workoutCommentSeq,
-        commentContent: updatedComment.commentContent,
-        commentLikes: updatedComment.commentLikes,
-        commentCreatedAt: updatedComment.commentCreatedAt.toISOString(),
-        user: {
-          userSeq: comment.user.userSeq,
-          userNickname: comment.user.userNickname,
-          profileImageUrl: comment.user.profileImageUrl || null,
-        },
+        ...this.mapCommentToBaseDTO(updatedComment),
       };
     } catch (error) {
       if (error instanceof CustomError) {
@@ -491,18 +508,7 @@ export class CommentService {
   ): Promise<void> {
     try {
       // 댓글 찾기
-      const comment = await this.commentRepository.findOne({
-        where: { workoutCommentSeq: commentSeq },
-        relations: ["user"],
-      });
-
-      if (!comment) {
-        throw new CustomError(
-          "댓글을 찾을 수 없습니다.",
-          404,
-          "CommentService.deleteComment"
-        );
-      }
+      const comment = await this.verifyComment(commentSeq, ["user"]);
 
       // 댓글 작성자 확인
       if (comment.user.userSeq !== userSeq) {
@@ -566,13 +572,10 @@ export class CommentService {
       // 좋아요 상태 확인
       let isLiked = false;
       if (userSeq) {
-        const like = await this.commentLikeRepository.findOne({
-          where: {
-            workoutComment: { workoutCommentSeq: commentSeq },
-            user: { userSeq },
-          },
-        });
-        isLiked = !!like;
+        isLiked = await this.commentLikeService.checkIsLiked(
+          userSeq,
+          commentSeq
+        );
       }
 
       // 대댓글 좋아요 상태 조회
@@ -591,38 +594,16 @@ export class CommentService {
 
       // 대댓글 DTO 변환
       const repliesDTO = replies.map((reply) => ({
-        workoutCommentSeq: reply.workoutCommentSeq,
-        commentContent: reply.commentContent,
-        commentLikes: reply.commentLikes,
-        commentCreatedAt: reply.commentCreatedAt.toISOString(),
+        ...this.mapCommentToBaseDTO(reply),
         isLiked: userSeq
           ? replyLikeStatusMap[reply.workoutCommentSeq] || false
           : false,
-        user: {
-          userSeq: reply.user.userSeq,
-          userNickname: reply.user.userNickname,
-          profileImageUrl:
-            reply.user.profileImageUrl ||
-            process.env.DEFAULT_PROFILE_IMAGE ||
-            null,
-        },
       }));
 
       // 응답 DTO 구성
       const commentWithReplies: CommentResponseDTO = {
-        workoutCommentSeq: comment.workoutCommentSeq,
-        commentContent: comment.commentContent,
-        commentLikes: comment.commentLikes,
-        commentCreatedAt: comment.commentCreatedAt.toISOString(),
+        ...this.mapCommentToBaseDTO(comment),
         isLiked,
-        user: {
-          userSeq: comment.user.userSeq,
-          userNickname: comment.user.userNickname,
-          profileImageUrl:
-            comment.user.profileImageUrl ||
-            process.env.DEFAULT_PROFILE_IMAGE ||
-            null,
-        },
         childComments: repliesDTO,
         childCommentsCount: childCount,
         workoutOfTheDaySeq: comment.workoutOfTheDay.workoutOfTheDaySeq,
@@ -690,50 +671,25 @@ export class CommentService {
       // 부모 댓글 좋아요 상태 확인
       let isLiked = false;
       if (userSeq) {
-        const like = await this.commentLikeRepository.findOne({
-          where: {
-            workoutComment: { workoutCommentSeq: parentCommentSeq },
-            user: { userSeq },
-          },
-        });
-        isLiked = !!like;
+        isLiked = await this.commentLikeService.checkIsLiked(
+          userSeq,
+          parentCommentSeq
+        );
       }
 
       // 대댓글 DTO 변환
       const repliesDTO = replies.map((reply) => ({
-        workoutCommentSeq: reply.workoutCommentSeq,
-        commentContent: reply.commentContent,
-        commentLikes: reply.commentLikes,
-        commentCreatedAt: reply.commentCreatedAt.toISOString(),
+        ...this.mapCommentToBaseDTO(reply),
         isLiked: userSeq
           ? replyLikeStatusMap[reply.workoutCommentSeq] || false
           : false,
-        user: {
-          userSeq: reply.user.userSeq,
-          userNickname: reply.user.userNickname,
-          profileImageUrl:
-            reply.user.profileImageUrl ||
-            process.env.DEFAULT_PROFILE_IMAGE ||
-            null,
-        },
         isTarget: reply.workoutCommentSeq === targetReplySeq, // 대상 대댓글 표시
       }));
 
       // 응답 DTO 구성
       const parentCommentWithReplies: CommentResponseDTO = {
-        workoutCommentSeq: parentComment.workoutCommentSeq,
-        commentContent: parentComment.commentContent,
-        commentLikes: parentComment.commentLikes,
-        commentCreatedAt: parentComment.commentCreatedAt.toISOString(),
+        ...this.mapCommentToBaseDTO(parentComment),
         isLiked,
-        user: {
-          userSeq: parentComment.user.userSeq,
-          userNickname: parentComment.user.userNickname,
-          profileImageUrl:
-            parentComment.user.profileImageUrl ||
-            process.env.DEFAULT_PROFILE_IMAGE ||
-            null,
-        },
         childComments: repliesDTO,
         childCommentsCount: replies.length,
         workoutOfTheDaySeq: parentComment.workoutOfTheDay.workoutOfTheDaySeq,
@@ -763,18 +719,7 @@ export class CommentService {
   ): Promise<number> {
     try {
       // 워크아웃 확인
-      const workout = await this.workoutRepository.findOneBy({
-        workoutOfTheDaySeq,
-        isDeleted: 0,
-      });
-
-      if (!workout) {
-        throw new CustomError(
-          "워크아웃을 찾을 수 없습니다.",
-          404,
-          "CommentService.getCommentCountByWorkoutId"
-        );
-      }
+      await this.verifyWorkout(workoutOfTheDaySeq);
 
       // 최상위 댓글만 조회 (부모 댓글이 null인 댓글)
       const count = await this.commentRepository.count({

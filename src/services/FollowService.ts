@@ -31,9 +31,44 @@ export class FollowService {
     this.notificationService = new NotificationService();
   }
 
-  // 사용자 팔로우하기
+  /**
+   * 사용자 존재 여부 확인
+   */
+  private async verifyUser(userSeq: number, context: string): Promise<User> {
+    const user = await this.userRepo.findOneBy({ userSeq });
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        `FollowService.${context}`
+      );
+    }
+    return user;
+  }
+
+  /**
+   * 장소 존재 여부 확인
+   */
+  private async verifyPlace(
+    workoutPlaceSeq: number,
+    context: string
+  ): Promise<WorkoutPlace> {
+    const place = await this.workoutPlaceRepo.findOneBy({ workoutPlaceSeq });
+    if (!place) {
+      throw new CustomError(
+        "장소를 찾을 수 없습니다.",
+        404,
+        `FollowService.${context}`
+      );
+    }
+    return place;
+  }
+
+  /**
+   * 사용자 팔로우하기
+   */
   @ErrorDecorator("FollowService.followUser")
-  async followUser(
+  public async followUser(
     followerUserSeq: number,
     followingUserSeq: number
   ): Promise<void> {
@@ -48,25 +83,9 @@ export class FollowService {
 
     // 팔로워와 팔로잉 유저 존재 확인
     const [follower, following] = await Promise.all([
-      this.userRepo.findOneBy({ userSeq: followerUserSeq }),
-      this.userRepo.findOneBy({ userSeq: followingUserSeq }),
+      this.verifyUser(followerUserSeq, "followUser"),
+      this.verifyUser(followingUserSeq, "followUser"),
     ]);
-
-    if (!follower) {
-      throw new CustomError(
-        "팔로워 사용자를 찾을 수 없습니다.",
-        404,
-        "FollowService.followUser"
-      );
-    }
-
-    if (!following) {
-      throw new CustomError(
-        "팔로잉 사용자를 찾을 수 없습니다.",
-        404,
-        "FollowService.followUser"
-      );
-    }
 
     // 이미 팔로우 중인지 확인
     const existingFollow = await this.userFollowRepo.findOne({
@@ -92,17 +111,29 @@ export class FollowService {
     await this.userFollowRepo.save(userFollow);
 
     // 팔로우 알림 생성
+    await this.createFollowNotification(follower, following);
+  }
+
+  /**
+   * 팔로우 알림 생성
+   */
+  private async createFollowNotification(
+    follower: User,
+    following: User
+  ): Promise<void> {
     const notificationDto = new CreateNotificationDTO();
-    notificationDto.receiverSeq = followingUserSeq;
-    notificationDto.senderSeq = followerUserSeq;
+    notificationDto.receiverSeq = following.userSeq;
+    notificationDto.senderSeq = follower.userSeq;
     notificationDto.notificationType = NotificationType.FOLLOW;
     notificationDto.notificationContent = `${follower.userNickname}님이 회원님을 팔로우합니다.`;
     await this.notificationService.createNotification(notificationDto);
   }
 
-  // 사용자 언팔로우하기
+  /**
+   * 사용자 언팔로우하기
+   */
   @ErrorDecorator("FollowService.unfollowUser")
-  async unfollowUser(
+  public async unfollowUser(
     followerUserSeq: number,
     followingUserSeq: number
   ): Promise<void> {
@@ -126,30 +157,19 @@ export class FollowService {
     await this.userFollowRepo.remove(userFollow);
   }
 
-  // 장소 팔로우하기
+  /**
+   * 장소 팔로우하기
+   */
   @ErrorDecorator("FollowService.followPlace")
-  async followPlace(userSeq: number, workoutPlaceSeq: number): Promise<void> {
+  public async followPlace(
+    userSeq: number,
+    workoutPlaceSeq: number
+  ): Promise<void> {
     // 사용자와 장소 존재 확인
     const [user, workoutPlace] = await Promise.all([
-      this.userRepo.findOneBy({ userSeq }),
-      this.workoutPlaceRepo.findOneBy({ workoutPlaceSeq }),
+      this.verifyUser(userSeq, "followPlace"),
+      this.verifyPlace(workoutPlaceSeq, "followPlace"),
     ]);
-
-    if (!user) {
-      throw new CustomError(
-        "사용자를 찾을 수 없습니다.",
-        404,
-        "FollowService.followPlace"
-      );
-    }
-
-    if (!workoutPlace) {
-      throw new CustomError(
-        "장소를 찾을 수 없습니다.",
-        404,
-        "FollowService.followPlace"
-      );
-    }
 
     // 이미 팔로우 중인지 확인
     const existingFollow = await this.placeFollowRepo.findOne({
@@ -175,9 +195,14 @@ export class FollowService {
     await this.placeFollowRepo.save(placeFollow);
   }
 
-  // 장소 언팔로우하기
+  /**
+   * 장소 언팔로우하기
+   */
   @ErrorDecorator("FollowService.unfollowPlace")
-  async unfollowPlace(userSeq: number, workoutPlaceSeq: number): Promise<void> {
+  public async unfollowPlace(
+    userSeq: number,
+    workoutPlaceSeq: number
+  ): Promise<void> {
     // 팔로우 관계 확인
     const placeFollow = await this.placeFollowRepo.findOne({
       where: {
@@ -198,9 +223,11 @@ export class FollowService {
     await this.placeFollowRepo.remove(placeFollow);
   }
 
-  // 팔로워 목록 가져오기
+  /**
+   * 팔로워 목록 가져오기
+   */
   @ErrorDecorator("FollowService.getFollowers")
-  async getFollowers(userSeq: number): Promise<FollowerDTO[]> {
+  public async getFollowers(userSeq: number): Promise<FollowerDTO[]> {
     const user = await this.userRepo.findOne({
       where: { userSeq },
       relations: ["followers", "followers.follower"],
@@ -224,9 +251,11 @@ export class FollowService {
     }));
   }
 
-  // 팔로잉 목록 가져오기
+  /**
+   * 팔로잉 목록 가져오기
+   */
   @ErrorDecorator("FollowService.getFollowing")
-  async getFollowing(userSeq: number): Promise<FollowingDTO[]> {
+  public async getFollowing(userSeq: number): Promise<FollowingDTO[]> {
     const user = await this.userRepo.findOne({
       where: { userSeq },
       relations: ["following", "following.following"],
@@ -250,9 +279,13 @@ export class FollowService {
     }));
   }
 
-  // 팔로잉 장소 목록 가져오기
+  /**
+   * 팔로잉 장소 목록 가져오기
+   */
   @ErrorDecorator("FollowService.getFollowingPlaces")
-  async getFollowingPlaces(userSeq: number): Promise<FollowingPlaceDTO[]> {
+  public async getFollowingPlaces(
+    userSeq: number
+  ): Promise<FollowingPlaceDTO[]> {
     const user = await this.userRepo.findOne({
       where: { userSeq },
       relations: ["followingPlaces", "followingPlaces.workoutPlace"],
@@ -273,9 +306,11 @@ export class FollowService {
     }));
   }
 
-  // 팔로우 카운트 가져오기
+  /**
+   * 팔로우 카운트 가져오기
+   */
   @ErrorDecorator("FollowService.getFollowCounts")
-  async getFollowCounts(userSeq: number): Promise<FollowCountDTO> {
+  public async getFollowCounts(userSeq: number): Promise<FollowCountDTO> {
     const user = await this.userRepo.findOne({
       where: { userSeq },
       relations: ["followers", "following", "followingPlaces"],
@@ -296,9 +331,11 @@ export class FollowService {
     };
   }
 
-  // 팔로우 상태 확인
+  /**
+   * 팔로우 상태 확인
+   */
   @ErrorDecorator("FollowService.checkUserFollowStatus")
-  async checkUserFollowStatus(
+  public async checkUserFollowStatus(
     followerUserSeq: number,
     followingUserSeq: number
   ): Promise<boolean> {
@@ -312,9 +349,11 @@ export class FollowService {
     return !!follow;
   }
 
-  // 장소 팔로우 상태 확인
+  /**
+   * 장소 팔로우 상태 확인
+   */
   @ErrorDecorator("FollowService.checkPlaceFollowStatus")
-  async checkPlaceFollowStatus(
+  public async checkPlaceFollowStatus(
     userSeq: number,
     workoutPlaceSeq: number
   ): Promise<boolean> {
@@ -328,9 +367,14 @@ export class FollowService {
     return !!follow;
   }
 
-  // 장소 팔로워 수 가져오기
+  /**
+   * 장소 팔로워 수 가져오기
+   */
   @ErrorDecorator("FollowService.getPlaceFollowerCount")
-  async getPlaceFollowerCount(workoutPlaceSeq: number): Promise<number> {
+  public async getPlaceFollowerCount(workoutPlaceSeq: number): Promise<number> {
+    // 장소 존재 확인
+    await this.verifyPlace(workoutPlaceSeq, "getPlaceFollowerCount");
+
     const count = await this.placeFollowRepo.count({
       where: {
         workoutPlace: { workoutPlaceSeq },

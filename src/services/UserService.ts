@@ -15,13 +15,16 @@ export class UserService {
     this.userRepo = AppDataSource.getRepository(User);
   }
 
+  /**
+   * 사용자 조회 관련 메서드
+   */
   // 모든 사용자 조회
   @ErrorDecorator("UserService.findAllUser")
   async findAllUser(): Promise<User[]> {
     return await this.userRepo.find();
   }
 
-  // 닉네임으로 조회
+  // 닉네임으로 사용자 조회
   @ErrorDecorator("UserService.findByNickname")
   async findByNickname(userNickname: string): Promise<User | null> {
     return await this.userRepo.findOneBy({ userNickname });
@@ -35,14 +38,10 @@ export class UserService {
       select: ["userSeq"],
     });
 
-    if (!user) {
-      return null;
-    }
-
-    return user.userSeq;
+    return user ? user.userSeq : null;
   }
 
-  // 닉네임으로 로그인한 사용자와 프로필의 유저가 같은지 확인
+  // 닉네임으로 프로필 소유권 확인
   @ErrorDecorator("UserService.checkProfileOwnershipByNickname")
   async checkProfileOwnershipByNickname(
     userNickname: string,
@@ -59,18 +58,13 @@ export class UserService {
     return userSeq === profileOwner.userSeq;
   }
 
+  /**
+   * 사용자 정보 관리 메서드
+   */
   // 사용자 정보 업데이트
   @ErrorDecorator("UserService.updateUser")
-  async updateUser(userSeq: number, dto: Partial<User>): Promise<User | null> {
-    const user = await this.userRepo.findOneBy({ userSeq });
-    if (!user) {
-      throw new CustomError(
-        "사용자를 찾을 수 없습니다.",
-        404,
-        "UserService.updateUser"
-      );
-    }
-
+  async updateUser(userSeq: number, dto: Partial<User>): Promise<User> {
+    const user = await this.findUserBySeqOrThrow(userSeq);
     const updated = Object.assign(user, dto);
     await this.userRepo.save(updated);
     return updated;
@@ -79,18 +73,13 @@ export class UserService {
   // 사용자 삭제
   @ErrorDecorator("UserService.deleteUser")
   async deleteUser(userSeq: number): Promise<void> {
-    const user = await this.userRepo.findOneBy({ userSeq });
-    if (!user) {
-      throw new CustomError(
-        "사용자를 찾을 수 없습니다.",
-        404,
-        "UserService.deleteUser"
-      );
-    }
-
+    const user = await this.findUserBySeqOrThrow(userSeq);
     await this.userRepo.remove(user);
   }
 
+  /**
+   * 인증 관련 메서드
+   */
   // 로그인 처리
   @ErrorDecorator("UserService.loginUser")
   async loginUser(
@@ -107,6 +96,22 @@ export class UserService {
       ],
     });
 
+    this.validateLoginUser(user, data);
+    const token = this.generateAuthToken(user.userSeq, data.userId);
+
+    const userDTO: UserInfoDTO = {
+      userSeq: user.userSeq,
+      userNickname: user.userNickname,
+    };
+
+    return { token, userDTO };
+  }
+
+  // 로그인 유효성 검증
+  private validateLoginUser(
+    user: User | null,
+    data: LoginDTO
+  ): asserts user is User {
     if (!user) {
       throw new CustomError(
         "아이디 또는 비밀번호가 일치하지 않습니다.",
@@ -115,7 +120,7 @@ export class UserService {
       );
     }
 
-    // 비밀번호가 존재하는지 확인 (TypeScript 타입 에러 방지)
+    // 비밀번호가 존재하는지 확인
     if (!user.userPw || !data.userPw) {
       throw new CustomError(
         "아이디 또는 비밀번호가 일치하지 않습니다.",
@@ -124,7 +129,8 @@ export class UserService {
       );
     }
 
-    if (!(await bcrypt.compare(data.userPw, user.userPw))) {
+    // 비밀번호 비교
+    if (!bcrypt.compareSync(data.userPw, user.userPw)) {
       throw new CustomError(
         "아이디 또는 비밀번호가 일치하지 않습니다.",
         401,
@@ -132,6 +138,7 @@ export class UserService {
       );
     }
 
+    // 이메일 인증 확인
     if (user.isVerified === 0) {
       throw new CustomError(
         "이메일 인증이 필요합니다.",
@@ -139,7 +146,10 @@ export class UserService {
         "UserService.loginUser"
       );
     }
+  }
 
+  // JWT 토큰 생성
+  private generateAuthToken(userSeq: number, userId: string): string {
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
       throw new CustomError(
@@ -149,18 +159,7 @@ export class UserService {
       );
     }
 
-    const token = jwt.sign(
-      { userSeq: user.userSeq, userId: data.userId },
-      jwtSecret,
-      { expiresIn: "1d" }
-    );
-
-    const userDTO: UserInfoDTO = {
-      userSeq: user.userSeq,
-      userNickname: user.userNickname,
-    };
-
-    return { token, userDTO };
+    return jwt.sign({ userSeq, userId }, jwtSecret, { expiresIn: "1d" });
   }
 
   // 사용자 정보 조회
@@ -189,28 +188,20 @@ export class UserService {
     };
   }
 
+  /**
+   * 프로필 이미지 관련 메서드
+   */
   // 프로필 이미지 업데이트
   @ErrorDecorator("UserService.updateProfileImage")
   async updateProfileImage(
     userSeq: number,
     file: Express.Multer.File
   ): Promise<string> {
-    const user = await this.userRepo.findOneBy({ userSeq });
-
-    if (!user) {
-      throw new CustomError(
-        "사용자를 찾을 수 없습니다.",
-        404,
-        "UserService.updateProfileImage"
-      );
-    }
+    const user = await this.findUserBySeqOrThrow(userSeq);
 
     // 기존 이미지가 있다면 삭제
     if (user.profileImageUrl) {
-      // 기본 이미지가 아니라면 삭제
-      if (user.profileImageUrl !== process.env.DEFAULT_PROFILE_IMAGE) {
-        await deleteImage(user.profileImageUrl);
-      }
+      await this.removeOldProfileImage(user.profileImageUrl);
     }
 
     const imageUrl = await this.uploadProfileImageToStorage(file);
@@ -218,6 +209,14 @@ export class UserService {
     await this.userRepo.save(user);
 
     return imageUrl;
+  }
+
+  // 기존 프로필 이미지 삭제
+  private async removeOldProfileImage(imageUrl: string): Promise<void> {
+    // 기본 이미지가 아니라면 삭제
+    if (imageUrl !== process.env.DEFAULT_PROFILE_IMAGE) {
+      await deleteImage(imageUrl);
+    }
   }
 
   // 이미지 저장소에 업로드
@@ -241,5 +240,21 @@ export class UserService {
     } else {
       return process.env.DEFAULT_PROFILE_IMAGE || "";
     }
+  }
+
+  /**
+   * 유틸리티 메서드
+   */
+  // 사용자 시퀀스로 사용자 찾기 (없으면 예외 발생)
+  private async findUserBySeqOrThrow(userSeq: number): Promise<User> {
+    const user = await this.userRepo.findOneBy({ userSeq });
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "UserService.findUserBySeqOrThrow"
+      );
+    }
+    return user;
   }
 }

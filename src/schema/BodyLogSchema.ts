@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-// 바디로그 입력 스키마
+/**
+ * 바디로그 입력 스키마
+ */
 export const SaveBodyLogSchema = z
   .object({
     height: z
@@ -45,9 +47,9 @@ export const SaveBodyLogSchema = z
     }
   );
 
-export type SaveBodyLogDTO = z.infer<typeof SaveBodyLogSchema>;
-
-// 바디로그 조회 필터 스키마
+/**
+ * 바디로그 조회 필터 스키마
+ */
 export const BodyLogFilterSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -67,9 +69,9 @@ export const BodyLogFilterSchema = z.object({
     .default(0),
 });
 
-export type BodyLogFilterDTO = z.infer<typeof BodyLogFilterSchema>;
-
-// 바디로그 통계 필터 스키마
+/**
+ * 바디로그 통계 필터 스키마
+ */
 export const BodyLogStatsFilterSchema = z.object({
   period: z
     .enum(["1months", "3months", "6months", "1year", "2years", "all"])
@@ -78,5 +80,3 @@ export const BodyLogStatsFilterSchema = z.object({
     .enum(["1week", "2weeks", "4weeks", "3months", "all"])
     .default("1week"),
 });
-
-export type BodyLogStatsFilterDTO = z.infer<typeof BodyLogStatsFilterSchema>;

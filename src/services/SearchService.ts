@@ -1,9 +1,20 @@
-import { Repository, Like, DataSource, LessThan } from "typeorm";
+import { Repository, DataSource } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { User } from "../entities/User";
 import { WorkoutPlace } from "../entities/WorkoutPlace";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
+import {
+  UserSearchResultDTO,
+  UserSearchResponseDTO,
+  PlaceSearchResultDTO,
+  PlaceSearchResponseDTO,
+} from "../dtos/SearchDTO";
+import { SearchUtil } from "../utils/searchUtil";
+import { PaginationUtil } from "../utils/paginationUtil";
 
+/**
+ * 검색 관련 비즈니스 로직을 처리하는 서비스
+ */
 export class SearchService {
   private userRepository: Repository<User>;
   private workoutPlaceRepository: Repository<WorkoutPlace>;
@@ -15,24 +26,29 @@ export class SearchService {
     this.dataSource = AppDataSource;
   }
 
-  // 닉네임으로 사용자 검색 - 페이징 지원 및 정렬 개선
+  /**
+   * 닉네임으로 사용자를 검색합니다
+   *
+   * @param keyword 검색 키워드 (예: '@닉네임' 또는 '닉네임')
+   * @param cursor 페이지네이션 커서
+   * @param limit 페이지 크기
+   * @returns 검색된 사용자 목록과 다음 페이지 커서
+   */
   @ErrorDecorator("SearchService.searchUsersByNickname")
   async searchUsersByNickname(
     keyword: string,
     cursor: number | null = null,
     limit: number = 10
-  ) {
-    // 닉네임 검색, '@' 기호가 있으면 제거 후 검색
-    const searchKeyword = keyword.startsWith("@")
-      ? keyword.substring(1)
-      : keyword;
+  ): Promise<UserSearchResponseDTO> {
+    // '@' 기호가 있으면 제거 후 검색
+    const searchKeyword = SearchUtil.removePrefix(keyword, "@");
 
     // 빈 키워드면 빈 배열 반환
-    if (!searchKeyword.trim()) {
+    if (!SearchUtil.isValidKeyword(searchKeyword)) {
       return { users: [], nextCursor: null };
     }
 
-    // 커서 사용자 정보 조회 (WorkoutService 스타일)
+    // 커서 사용자 정보 조회
     let cursorUser = null;
     if (cursor) {
       cursorUser = await this.userRepository.findOne({
@@ -49,7 +65,7 @@ export class SearchService {
       .select(["user.userSeq", "user.userNickname", "user.profileImageUrl"])
       .where("user.isVerified = :isVerified", { isVerified: 1 })
       .andWhere("user.userNickname LIKE :keyword", {
-        keyword: `%${searchKeyword}%`,
+        keyword: SearchUtil.createLikeKeyword(searchKeyword),
       });
 
     // 커서 기반 페이징 적용
@@ -57,16 +73,14 @@ export class SearchService {
       query.andWhere("user.userSeq > :cursor", { cursor });
     }
 
-    // 정확한 일치 우선 정렬 - Oracle 호환을 위해 수정
+    // 정확한 일치 우선 정렬
+    const orderCaseStatement = SearchUtil.createPriorityOrderCaseStatement(
+      "user.userNickname",
+      searchKeyword
+    );
+
     query
-      .orderBy(
-        `CASE 
-          WHEN user.userNickname = :exactKeyword THEN 0 
-          WHEN user.userNickname LIKE :startKeyword THEN 1 
-          ELSE 2 
-        END`,
-        "ASC"
-      )
+      .orderBy(orderCaseStatement, "ASC")
       .setParameter("exactKeyword", searchKeyword)
       .setParameter("startKeyword", `${searchKeyword}%`)
       .addOrderBy("user.userNickname", "ASC")
@@ -75,42 +89,57 @@ export class SearchService {
     // 결과 조회
     const users = await query.getMany();
 
-    // 다음 페이지 커서 설정
-    let nextCursor = null;
+    // 다음 페이지 커서 계산
+    const nextCursor = PaginationUtil.getNextCursor(
+      users,
+      limit,
+      (user) => user.userSeq
+    );
+
+    // 추가로 가져온 항목 제거
     if (users.length > limit) {
-      const nextUser = users.pop();
-      nextCursor = nextUser?.userSeq || null;
+      users.pop();
     }
 
+    // DTO 형식으로 변환
+    const userResults: UserSearchResultDTO[] = users.map((user) => {
+      const dto = new UserSearchResultDTO();
+      dto.userSeq = user.userSeq;
+      dto.userNickname = user.userNickname;
+      dto.profileImageUrl =
+        user.profileImageUrl ?? process.env.DEFAULT_PROFILE_IMAGE ?? null;
+      return dto;
+    });
+
     return {
-      users: users.map((user) => ({
-        userSeq: user.userSeq,
-        userNickname: user.userNickname,
-        profileImageUrl:
-          user.profileImageUrl || process.env.DEFAULT_PROFILE_IMAGE,
-      })),
+      users: userResults,
       nextCursor,
     };
   }
 
-  // 장소명으로 운동 장소 검색 - 페이징 지원 및 정렬 개선
+  /**
+   * 장소명으로 운동 장소를 검색합니다
+   *
+   * @param keyword 검색 키워드 (예: '#장소명' 또는 '장소명')
+   * @param cursor 페이지네이션 커서
+   * @param limit 페이지 크기
+   * @returns 검색된 장소 목록과 다음 페이지 커서
+   */
   @ErrorDecorator("SearchService.searchWorkoutPlaces")
   async searchWorkoutPlaces(
     keyword: string,
     cursor: number | null = null,
     limit: number = 10
-  ) {
-    // 장소 검색, '#' 기호가 있으면 제거 후 검색
-    const searchKeyword = keyword.startsWith("#")
-      ? keyword.substring(1)
-      : keyword;
+  ): Promise<PlaceSearchResponseDTO> {
+    // '#' 기호가 있으면 제거 후 검색
+    const searchKeyword = SearchUtil.removePrefix(keyword, "#");
 
     // 빈 키워드면 빈 배열 반환
-    if (!searchKeyword.trim()) {
+    if (!SearchUtil.isValidKeyword(searchKeyword)) {
       return { places: [], nextCursor: null };
     }
 
-    // 커서 장소 정보 조회 (WorkoutService 스타일)
+    // 커서 장소 정보 조회
     let cursorPlace = null;
     if (cursor) {
       cursorPlace = await this.workoutPlaceRepository.findOne({
@@ -131,7 +160,7 @@ export class SearchService {
         "place.roadAddressName",
       ])
       .where("place.placeName LIKE :keyword", {
-        keyword: `%${searchKeyword}%`,
+        keyword: SearchUtil.createLikeKeyword(searchKeyword),
       })
       .andWhere((qb) => {
         const subQuery = qb
@@ -148,16 +177,14 @@ export class SearchService {
       query.andWhere("place.workoutPlaceSeq > :cursor", { cursor });
     }
 
-    // 정확한 일치 우선 정렬 - Oracle 호환을 위해 수정
+    // 정확한 일치 우선 정렬
+    const orderCaseStatement = SearchUtil.createPriorityOrderCaseStatement(
+      "place.placeName",
+      searchKeyword
+    );
+
     query
-      .orderBy(
-        `CASE 
-          WHEN place.placeName = :exactKeyword THEN 0 
-          WHEN place.placeName LIKE :startKeyword THEN 1 
-          ELSE 2 
-        END`,
-        "ASC"
-      )
+      .orderBy(orderCaseStatement, "ASC")
       .setParameter("exactKeyword", searchKeyword)
       .setParameter("startKeyword", `${searchKeyword}%`)
       .addOrderBy("place.placeName", "ASC")
@@ -166,20 +193,30 @@ export class SearchService {
     // 결과 조회
     const places = await query.getMany();
 
-    // 다음 페이지 커서 설정
-    let nextCursor = null;
+    // 다음 페이지 커서 계산
+    const nextCursor = PaginationUtil.getNextCursor(
+      places,
+      limit,
+      (place) => place.workoutPlaceSeq
+    );
+
+    // 추가로 가져온 항목 제거
     if (places.length > limit) {
-      const nextPlace = places.pop();
-      nextCursor = nextPlace?.workoutPlaceSeq || null;
+      places.pop();
     }
 
+    // DTO 형식으로 변환
+    const placeResults: PlaceSearchResultDTO[] = places.map((place) => {
+      const dto = new PlaceSearchResultDTO();
+      dto.workoutPlaceSeq = place.workoutPlaceSeq;
+      dto.placeName = place.placeName;
+      dto.addressName = place.addressName;
+      dto.roadAddressName = place.roadAddressName;
+      return dto;
+    });
+
     return {
-      places: places.map((place) => ({
-        workoutPlaceSeq: place.workoutPlaceSeq,
-        placeName: place.placeName,
-        addressName: place.addressName,
-        roadAddressName: place.roadAddressName,
-      })),
+      places: placeResults,
       nextCursor,
     };
   }

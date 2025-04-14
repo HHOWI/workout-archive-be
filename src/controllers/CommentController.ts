@@ -5,37 +5,36 @@ import { ControllerUtil } from "../utils/controllerUtil";
 import { CommentService } from "../services/CommentService";
 import { CommentLikeService } from "../services/CommentLikeService";
 import { SeqSchema } from "../schema/BaseSchema";
-import { z } from "zod";
-import { RepliesQuerySchema } from "../dtos/CommentDTO";
-
-// 댓글 생성 유효성 검사 스키마
-const CreateCommentSchema = z.object({
-  content: z
-    .string()
-    .min(1, "댓글 내용은 1자 이상이어야 합니다.")
-    .max(500, "댓글 내용은 500자 이하여야 합니다."),
-  parentCommentSeq: z.number().optional(),
-});
-
-// 댓글 수정 유효성 검사 스키마
-const UpdateCommentSchema = z.object({
-  content: z
-    .string()
-    .min(1, "댓글 내용은 1자 이상이어야 합니다.")
-    .max(500, "댓글 내용은 500자 이하여야 합니다."),
-});
-
-// 댓글 목록 쿼리 파라미터 스키마
-const CommentListQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(50).default(10),
-});
+import { ZodError } from "zod";
+import {
+  CreateCommentSchema,
+  UpdateCommentSchema,
+  CommentListQuerySchema,
+  RepliesQuerySchema,
+} from "../schema/CommentSchema";
 
 export class CommentController {
   private commentService = new CommentService();
   private commentLikeService = new CommentLikeService();
 
-  // 댓글 생성
+  /**
+   * 공통 에러 처리 헬퍼 메서드
+   */
+  private handleValidationError(error: ZodError, context: string): never {
+    throw new CustomError(
+      "유효성 검사 실패",
+      400,
+      `CommentController.${context}`,
+      error.errors.map((err) => ({
+        message: err.message,
+        path: err.path.map((p) => p.toString()),
+      }))
+    );
+  }
+
+  /**
+   * 댓글 생성
+   */
   public createComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
@@ -44,15 +43,7 @@ export class CommentController {
       // 유효성 검사
       const validationResult = CreateCommentSchema.safeParse(req.body);
       if (!validationResult.success) {
-        throw new CustomError(
-          "유효성 검사 실패",
-          400,
-          "CommentController.createComment",
-          validationResult.error.errors.map((err) => ({
-            message: err.message,
-            path: err.path.map((p) => p.toString()),
-          }))
-        );
+        this.handleValidationError(validationResult.error, "createComment");
       }
 
       const commentData = validationResult.data;
@@ -69,14 +60,20 @@ export class CommentController {
     }
   );
 
-  // 댓글 목록 조회
+  /**
+   * 댓글 목록 조회
+   */
   public getComments = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
 
-      // 페이지네이션 파라미터
-      const page = Number(req.query.page) || 1;
-      const limit = Number(req.query.limit) || 10;
+      // 쿼리 파라미터 파싱
+      const queryResult = CommentListQuerySchema.safeParse(req.query);
+      if (!queryResult.success) {
+        this.handleValidationError(queryResult.error, "getComments");
+      }
+
+      const { page, limit } = queryResult.data;
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
       // 인증 여부와 상관없이 항상 getCommentsWithLikes 호출 (userSeq가 undefined일 수 있음)
@@ -91,18 +88,16 @@ export class CommentController {
     }
   );
 
-  // 대댓글 목록 조회
+  /**
+   * 대댓글 목록 조회
+   */
   public getReplies = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const commentSeq = SeqSchema.parse(req.params.commentSeq);
       const queryParams = RepliesQuerySchema.safeParse(req.query);
 
       if (!queryParams.success) {
-        throw new CustomError(
-          "유효하지 않은 쿼리 파라미터입니다.",
-          400,
-          "CommentController.getReplies"
-        );
+        this.handleValidationError(queryParams.error, "getReplies");
       }
 
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
@@ -119,7 +114,9 @@ export class CommentController {
     }
   );
 
-  // 단일 댓글 조회 (대댓글 포함)
+  /**
+   * 단일 댓글 조회 (대댓글 포함)
+   */
   public getComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const commentSeq = SeqSchema.parse(req.params.commentSeq);
@@ -134,7 +131,9 @@ export class CommentController {
     }
   );
 
-  // 부모 댓글과 모든 대댓글 조회 (알림용)
+  /**
+   * 부모 댓글과 모든 대댓글 조회 (알림용)
+   */
   public getParentCommentWithAllReplies = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const parentCommentSeq = SeqSchema.parse(req.params.parentCommentSeq);
@@ -151,7 +150,9 @@ export class CommentController {
     }
   );
 
-  // 댓글 수정
+  /**
+   * 댓글 수정
+   */
   public updateComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
@@ -160,15 +161,7 @@ export class CommentController {
       // 유효성 검사
       const validationResult = UpdateCommentSchema.safeParse(req.body);
       if (!validationResult.success) {
-        throw new CustomError(
-          "유효성 검사 실패",
-          400,
-          "CommentController.updateComment",
-          validationResult.error.errors.map((err) => ({
-            message: err.message,
-            path: err.path.map((p) => p.toString()),
-          }))
-        );
+        this.handleValidationError(validationResult.error, "updateComment");
       }
 
       const updateData = validationResult.data;
@@ -185,7 +178,9 @@ export class CommentController {
     }
   );
 
-  // 댓글 삭제
+  /**
+   * 댓글 삭제
+   */
   public deleteComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
@@ -199,7 +194,9 @@ export class CommentController {
     }
   );
 
-  // 댓글 좋아요 토글
+  /**
+   * 댓글 좋아요 토글
+   */
   public toggleCommentLike = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);

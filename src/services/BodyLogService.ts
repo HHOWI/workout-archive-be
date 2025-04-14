@@ -1,16 +1,19 @@
 import { AppDataSource } from "../data-source";
 import { BodyLog } from "../entities/BodyLog";
 import { User } from "../entities/User";
+import { Repository } from "typeorm";
+import { CustomError } from "../utils/customError";
+import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import {
   SaveBodyLogDTO,
   BodyLogFilterDTO,
   BodyLogStatsFilterDTO,
-} from "../schema/BodyLogSchema";
-import { BodyLogStatsDTO } from "../dtos/BodyLogDTO";
-import { CustomError } from "../utils/customError";
-import { Repository } from "typeorm";
-import { ErrorDecorator } from "../decorators/ErrorDecorator";
+  BodyLogStatsDTO,
+} from "../dtos/BodyLogDTO";
 
+/**
+ * 바디로그 관련 서비스
+ */
 export class BodyLogService {
   private bodyLogRepository: Repository<BodyLog>;
   private userRepository: Repository<User>;
@@ -20,6 +23,12 @@ export class BodyLogService {
     this.userRepository = AppDataSource.getRepository(User);
   }
 
+  /**
+   * 바디로그를 저장합니다.
+   * @param userSeq 사용자 시퀀스
+   * @param bodyLogDTO 저장할 바디로그 데이터
+   * @returns 저장된 바디로그 시퀀스
+   */
   @ErrorDecorator("BodyLogService.saveBodyLog")
   public async saveBodyLog(
     userSeq: number,
@@ -57,6 +66,12 @@ export class BodyLogService {
     };
   }
 
+  /**
+   * 바디로그 목록을 조회합니다.
+   * @param userSeq 사용자 시퀀스
+   * @param filter 필터 옵션
+   * @returns 바디로그 목록
+   */
   @ErrorDecorator("BodyLogService.getBodyLogs")
   public async getBodyLogs(
     userSeq: number,
@@ -82,10 +97,6 @@ export class BodyLogService {
       query.andWhere("bodyLog.recordDate <= :endOfMonth", {
         endOfMonth: endDate,
       });
-
-      console.log(
-        `필터링: ${year}년 ${month}월 (${startDate.toISOString()} ~ ${endDate.toISOString()})`
-      );
     } else {
       // 기존 날짜 필터 적용
       if (filter.startDate) {
@@ -105,6 +116,11 @@ export class BodyLogService {
     return bodyLogs;
   }
 
+  /**
+   * 최신 바디로그를 조회합니다.
+   * @param userSeq 사용자 시퀀스
+   * @returns 최신 바디로그 또는 null
+   */
   @ErrorDecorator("BodyLogService.getLatestBodyLog")
   public async getLatestBodyLog(userSeq: number): Promise<BodyLog | null> {
     const latestBodyLog = await this.bodyLogRepository
@@ -118,6 +134,11 @@ export class BodyLogService {
     return latestBodyLog;
   }
 
+  /**
+   * 바디로그를 삭제합니다.
+   * @param userSeq 사용자 시퀀스
+   * @param bodyLogSeq 삭제할 바디로그 시퀀스
+   */
   @ErrorDecorator("BodyLogService.deleteBodyLog")
   public async deleteBodyLog(
     userSeq: number,

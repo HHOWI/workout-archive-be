@@ -3,15 +3,37 @@ import { Request, Response } from "express";
 import { UserService } from "../services/UserService";
 import { CustomError } from "../utils/customError";
 import { LoginSchema } from "../schema/UserSchema";
-import { LoginDTO } from "../dtos/UserDTO";
+import { LoginDTO, ProfileInfoDTO } from "../dtos/UserDTO";
 import { ControllerUtil } from "../utils/controllerUtil";
 import { WorkoutService } from "../services/WorkoutService";
 import { FollowService } from "../services/FollowService";
+import { ZodError } from "zod";
 
 export class UserController {
   private userService = new UserService();
   private workoutService = new WorkoutService();
   private followService = new FollowService();
+
+  /**
+   * 공통 에러 핸들러 함수
+   */
+  private handleError(error: unknown, context: string): never {
+    if (error instanceof ZodError) {
+      throw new CustomError(
+        error.errors[0].message,
+        400,
+        `UserController.${context}`
+      );
+    }
+    if (error instanceof Error) {
+      throw new CustomError(error.message, 400, `UserController.${context}`);
+    }
+    throw new CustomError(
+      "요청 처리 중 오류가 발생했습니다.",
+      400,
+      `UserController.${context}`
+    );
+  }
 
   // POST /users/login
   public loginUser = asyncHandler(
@@ -33,15 +55,7 @@ export class UserController {
 
         res.json(responseUserDTO);
       } catch (error) {
-        if (error instanceof Error) {
-          throw new CustomError(error.message, 400, "UserController.loginUser");
-        }
-
-        throw new CustomError(
-          "로그인 요청이 유효하지 않습니다.",
-          400,
-          "UserController.loginUser"
-        );
+        this.handleError(error, "loginUser");
       }
     }
   );
@@ -59,30 +73,7 @@ export class UserController {
         );
       }
 
-      // 파일 유효성 검사 추가
-      const allowedMimeTypes = [
-        "image/jpeg",
-        "image/png",
-        "image/gif",
-        "image/webp",
-      ];
-      if (!allowedMimeTypes.includes(req.file.mimetype)) {
-        throw new CustomError(
-          "허용되지 않는 파일 형식입니다. JPEG, PNG, GIF, WEBP 형식만 허용됩니다.",
-          400,
-          "UserController.updateProfileImage"
-        );
-      }
-
-      // 파일 크기 제한 확인 (5MB)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (req.file.size > maxSize) {
-        throw new CustomError(
-          "파일 크기는 5MB 이하여야 합니다.",
-          400,
-          "UserController.updateProfileImage"
-        );
-      }
+      this.validateImageFile(req.file);
 
       const imageUrl = await this.userService.updateProfileImage(
         userSeq,
@@ -91,6 +82,36 @@ export class UserController {
       res.json({ imageUrl });
     }
   );
+
+  /**
+   * 이미지 파일 유효성 검사 로직 추출
+   */
+  private validateImageFile(file: Express.Multer.File): void {
+    // 파일 유효성 검사
+    const allowedMimeTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new CustomError(
+        "허용되지 않는 파일 형식입니다. JPEG, PNG, GIF, WEBP 형식만 허용됩니다.",
+        400,
+        "UserController.updateProfileImage"
+      );
+    }
+
+    // 파일 크기 제한 확인 (5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      throw new CustomError(
+        "파일 크기는 5MB 이하여야 합니다.",
+        400,
+        "UserController.updateProfileImage"
+      );
+    }
+  }
 
   // POST /users/logout
   public logoutUser = asyncHandler(
@@ -179,55 +200,10 @@ export class UserController {
   // GET /users/profile-info/:userNickname (통합 프로필 정보 조회)
   public getProfileInfo = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const userNickname = req.params.userNickname;
-
-      // 비로그인 상태일 경우 isOwner를 false로 초기화
-      let isOwner = false;
-
       try {
-        // 사용자 시퀀스 먼저 조회
-        const userSeq = await this.userService.getUserSeqByNickname(
-          userNickname
-        );
-
-        if (userSeq === null) {
-          throw new CustomError(
-            "사용자를 찾을 수 없습니다.",
-            404,
-            "UserController.getProfileInfo"
-          );
-        }
-
-        // 로그인 상태이면 프로필 소유권 확인
-        if (req.user) {
-          const loggedInUserSeq = req.user.userSeq;
-          // 직접 userSeq 비교로 소유권 확인 (더 명확하고 간단함)
-          isOwner = loggedInUserSeq === userSeq;
-        }
-
-        // 병렬로 필요한 정보 조회
-        const [imageUrl, workoutCount, followCounts] = await Promise.all([
-          this.userService.getProfileImage(userNickname),
-          this.workoutService.getWorkoutOfTheDayCountByNickname(userNickname),
-          this.followService.getFollowCounts(userSeq),
-        ]);
-
-        // 팔로잉 카운트에 사용자와 장소 팔로잉 합산
-        const totalFollowingCount =
-          followCounts.followingCount + followCounts.followingPlaceCount;
-        console.log("totalFollowingCount", totalFollowingCount);
-        // 통합 응답 반환
-        res.json({
-          userNickname,
-          userSeq,
-          imageUrl,
-          workoutCount,
-          isOwner,
-          followCounts: {
-            followerCount: followCounts.followerCount,
-            followingCount: totalFollowingCount,
-          },
-        });
+        const userNickname = req.params.userNickname;
+        const profileInfo = await this.fetchProfileInfo(userNickname, req);
+        res.json(profileInfo);
       } catch (error) {
         if (error instanceof CustomError) {
           throw error;
@@ -240,4 +216,57 @@ export class UserController {
       }
     }
   );
+
+  /**
+   * 프로필 정보 조회 로직 추출
+   */
+  private async fetchProfileInfo(
+    userNickname: string,
+    req: Request
+  ): Promise<ProfileInfoDTO> {
+    // 비로그인 상태일 경우 isOwner를 false로 초기화
+    let isOwner = false;
+
+    // 사용자 시퀀스 먼저 조회
+    const userSeq = await this.userService.getUserSeqByNickname(userNickname);
+
+    if (userSeq === null) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "UserController.getProfileInfo"
+      );
+    }
+
+    // 로그인 상태이면 프로필 소유권 확인
+    if (req.user) {
+      const loggedInUserSeq = req.user.userSeq;
+      // 직접 userSeq 비교로 소유권 확인 (더 명확하고 간단함)
+      isOwner = loggedInUserSeq === userSeq;
+    }
+
+    // 병렬로 필요한 정보 조회
+    const [imageUrl, workoutCount, followCounts] = await Promise.all([
+      this.userService.getProfileImage(userNickname),
+      this.workoutService.getWorkoutOfTheDayCountByNickname(userNickname),
+      this.followService.getFollowCounts(userSeq),
+    ]);
+
+    // 팔로잉 카운트에 사용자와 장소 팔로잉 합산
+    const totalFollowingCount =
+      followCounts.followingCount + followCounts.followingPlaceCount;
+
+    // 통합 응답 반환
+    return {
+      userNickname,
+      userSeq,
+      imageUrl,
+      workoutCount,
+      isOwner,
+      followCounts: {
+        followerCount: followCounts.followerCount,
+        followingCount: totalFollowingCount,
+      },
+    };
+  }
 }

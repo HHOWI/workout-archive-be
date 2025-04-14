@@ -25,6 +25,41 @@ export class CommentLikeService {
   }
 
   /**
+   * 댓글의 존재 여부를 확인합니다.
+   */
+  private async verifyComment(commentSeq: number): Promise<WorkoutComment> {
+    const comment = await this.commentRepository.findOne({
+      where: { workoutCommentSeq: commentSeq },
+      relations: ["user", "workoutOfTheDay"],
+    });
+
+    if (!comment) {
+      throw new CustomError(
+        "댓글을 찾을 수 없습니다.",
+        404,
+        "CommentLikeService.verifyComment"
+      );
+    }
+
+    return comment;
+  }
+
+  /**
+   * 사용자의 존재 여부를 확인합니다.
+   */
+  private async verifyUser(userSeq: number): Promise<User> {
+    const user = await this.userRepository.findOneBy({ userSeq });
+    if (!user) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "CommentLikeService.verifyUser"
+      );
+    }
+    return user;
+  }
+
+  /**
    * 댓글의 좋아요 개수를 조회합니다.
    */
   public async getCommentLikesCount(commentSeq: number): Promise<number> {
@@ -110,10 +145,8 @@ export class CommentLikeService {
         relations: ["workoutComment"],
       });
 
-      // 결과 매핑
+      // 결과 매핑: 모든 댓글에 대해 기본값으로 false 설정
       const likeStatusMap: Record<number, boolean> = {};
-
-      // 모든 댓글에 대해 기본값으로 false 설정
       commentSeqs.forEach((seq) => {
         likeStatusMap[seq] = false;
       });
@@ -137,6 +170,42 @@ export class CommentLikeService {
   }
 
   /**
+   * 댓글 좋아요 관련 알림을 생성합니다.
+   */
+  private async createLikeNotification(
+    user: User,
+    comment: WorkoutComment,
+    isReplyComment: boolean,
+    parentComment?: WorkoutComment | null
+  ): Promise<void> {
+    // 본인 댓글에 좋아요는 알림 생성하지 않음
+    if (comment.user.userSeq === user.userSeq) return;
+
+    const notificationDto = new CreateNotificationDTO();
+    notificationDto.receiverSeq = comment.user.userSeq;
+    notificationDto.senderSeq = user.userSeq;
+    notificationDto.workoutOfTheDaySeq =
+      comment.workoutOfTheDay.workoutOfTheDaySeq;
+
+    if (isReplyComment && parentComment) {
+      // 대댓글인 경우
+      notificationDto.notificationType = NotificationType.REPLY_LIKE;
+      notificationDto.notificationContent = `${user.userNickname}님이 회원님의 답글을 좋아합니다.`;
+      // 부모 댓글 정보 저장
+      notificationDto.workoutCommentSeq = parentComment.workoutCommentSeq;
+      // 좋아요 받은 대댓글 정보 저장
+      notificationDto.replyCommentSeq = comment.workoutCommentSeq;
+    } else {
+      // 일반 댓글인 경우
+      notificationDto.notificationType = NotificationType.COMMENT_LIKE;
+      notificationDto.notificationContent = `${user.userNickname}님이 회원님의 댓글을 좋아합니다.`;
+      notificationDto.workoutCommentSeq = comment.workoutCommentSeq;
+    }
+
+    await this.notificationService.createNotification(notificationDto);
+  }
+
+  /**
    * 댓글 좋아요를 토글합니다.
    */
   @ErrorDecorator("CommentLikeService.toggleCommentLike")
@@ -146,20 +215,14 @@ export class CommentLikeService {
   ): Promise<CommentLikeResponseDTO> {
     try {
       // 사용자 확인
-      const user = await this.userRepository.findOneBy({ userSeq });
-      if (!user) {
-        throw new CustomError(
-          "사용자를 찾을 수 없습니다.",
-          404,
-          "CommentLikeService.toggleCommentLike"
-        );
-      }
+      const user = await this.verifyUser(userSeq);
 
-      // 댓글 확인
+      // 댓글 확인 (parentComment 포함)
       const comment = await this.commentRepository.findOne({
         where: { workoutCommentSeq: commentSeq },
-        relations: ["user", "workoutOfTheDay"],
+        relations: ["user", "workoutOfTheDay", "parentComment"],
       });
+
       if (!comment) {
         throw new CustomError(
           "댓글을 찾을 수 없습니다.",
@@ -190,51 +253,31 @@ export class CommentLikeService {
         comment.commentLikes++;
         isLiked = true;
 
-        // 댓글 작성자에게 좋아요 알림 생성 (본인 제외)
-        if (comment.user.userSeq !== userSeq) {
-          const notificationDto = new CreateNotificationDTO();
-          notificationDto.receiverSeq = comment.user.userSeq;
-          notificationDto.senderSeq = userSeq;
+        // 대댓글 여부 확인
+        const isReplyComment = !!comment.parentComment;
 
-          // 댓글 유형 확인 (대댓글 여부 확인)
-          const isReply = await this.commentRepository.findOne({
-            where: { workoutCommentSeq: commentSeq },
-            relations: ["parentComment"],
-          });
-
-          if (isReply && isReply.parentComment) {
-            // 대댓글인 경우
-            notificationDto.notificationType = NotificationType.REPLY_LIKE;
-            notificationDto.notificationContent = `${user.userNickname}님이 회원님의 답글을 좋아합니다.`;
-            notificationDto.workoutOfTheDaySeq =
-              comment.workoutOfTheDay.workoutOfTheDaySeq;
-            notificationDto.workoutCommentSeq =
-              isReply.parentComment.workoutCommentSeq; // 부모 댓글 ID
-            notificationDto.replyCommentSeq = commentSeq; // 대댓글 ID
-          } else {
-            // 일반 댓글인 경우
-            notificationDto.notificationType = NotificationType.COMMENT_LIKE;
-            notificationDto.notificationContent = `${user.userNickname}님이 회원님의 댓글을 좋아합니다.`;
-            notificationDto.workoutOfTheDaySeq =
-              comment.workoutOfTheDay.workoutOfTheDaySeq;
-            notificationDto.workoutCommentSeq = commentSeq;
-          }
-
-          await this.notificationService.createNotification(notificationDto);
-        }
+        // 알림 생성
+        await this.createLikeNotification(
+          user,
+          comment,
+          isReplyComment,
+          comment.parentComment
+        );
       }
 
-      // 댓글 저장
+      // 댓글 좋아요 수 업데이트
       await this.commentRepository.save(comment);
-      const likeCount = await this.getCommentLikesCount(commentSeq);
 
-      return { isLiked, likeCount };
+      return {
+        isLiked: isLiked,
+        likeCount: comment.commentLikes,
+      };
     } catch (error) {
       if (error instanceof CustomError) {
         throw error;
       }
       throw new CustomError(
-        "댓글 좋아요 처리 중 오류가 발생했습니다.",
+        "댓글 좋아요 토글 중 오류가 발생했습니다.",
         500,
         "CommentLikeService.toggleCommentLike"
       );

@@ -11,9 +11,35 @@ import {
   VerifyEmailSchema,
 } from "../schema/UserSchema";
 import { ZodError } from "zod";
+import { ControllerUtil } from "../utils/controllerUtil";
 
 export class RegisterController {
   private registerService = new RegisterService();
+
+  /**
+   * 공통 에러 핸들러 함수
+   */
+  private handleZodError(error: unknown, context: string): never {
+    if (error instanceof ZodError) {
+      throw new CustomError(
+        error.errors[0].message,
+        400,
+        `RegisterController.${context}`
+      );
+    }
+    if (error instanceof Error) {
+      throw new CustomError(
+        error.message,
+        400,
+        `RegisterController.${context}`
+      );
+    }
+    throw new CustomError(
+      "요청 처리 중 오류가 발생했습니다.",
+      400,
+      `RegisterController.${context}`
+    );
+  }
 
   // GET /check-id
   public checkUserId = asyncHandler(
@@ -27,25 +53,7 @@ export class RegisterController {
         );
         res.json({ isDuplicated });
       } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "RegisterController.checkUserId"
-          );
-        }
-        if (error instanceof Error) {
-          throw new CustomError(
-            error.message,
-            400,
-            "RegisterController.checkUserId"
-          );
-        }
-        throw new CustomError(
-          "아이디 중복 확인 중 오류가 발생했습니다.",
-          400,
-          "RegisterController.checkUserId"
-        );
+        this.handleZodError(error, "checkUserId");
       }
     }
   );
@@ -61,25 +69,7 @@ export class RegisterController {
           await this.registerService.isUserNicknameDuplicated(userNickname);
         res.json({ isDuplicated });
       } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "RegisterController.checkUserNickname"
-          );
-        }
-        if (error instanceof Error) {
-          throw new CustomError(
-            error.message,
-            400,
-            "RegisterController.checkUserNickname"
-          );
-        }
-        throw new CustomError(
-          "닉네임 중복 확인 중 오류가 발생했습니다.",
-          400,
-          "RegisterController.checkUserNickname"
-        );
+        this.handleZodError(error, "checkUserNickname");
       }
     }
   );
@@ -96,25 +86,7 @@ export class RegisterController {
         );
         res.json({ isDuplicated });
       } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "RegisterController.checkUserEmail"
-          );
-        }
-        if (error instanceof Error) {
-          throw new CustomError(
-            error.message,
-            400,
-            "RegisterController.checkUserEmail"
-          );
-        }
-        throw new CustomError(
-          "이메일 중복 확인 중 오류가 발생했습니다.",
-          400,
-          "RegisterController.checkUserEmail"
-        );
+        this.handleZodError(error, "checkUserEmail");
       }
     }
   );
@@ -124,72 +96,57 @@ export class RegisterController {
     async (req: Request, res: Response): Promise<void> => {
       try {
         // Zod 스키마를 사용하여 유효성 검사
-        const registerData = RegisterSchema.parse(req.body);
+        const registerData: RegisterDTO = RegisterSchema.parse(req.body);
 
         // 중복 체크
-        const existingUserId = await this.registerService.isUserIdDuplicated(
-          registerData.userId
-        );
-        if (existingUserId) {
-          throw new CustomError(
-            "이미 사용 중인 아이디입니다.",
-            409,
-            "RegisterController.registerUser"
-          );
-        }
-
-        const existingUserNickname =
-          await this.registerService.isUserNicknameDuplicated(
-            registerData.userNickname
-          );
-        if (existingUserNickname) {
-          throw new CustomError(
-            "이미 사용 중인 닉네임입니다.",
-            409,
-            "RegisterController.registerUser"
-          );
-        }
-
-        const existingUserEmail =
-          await this.registerService.isUserEmailDuplicated(
-            registerData.userEmail
-          );
-        if (existingUserEmail) {
-          throw new CustomError(
-            "이미 사용 중인 이메일입니다.",
-            409,
-            "RegisterController.registerUser"
-          );
-        }
+        await this.checkDuplication(registerData);
 
         await this.registerService.registerUser(registerData);
         res.status(201).json({
           message: "가입이 완료되었습니다. 이메일 인증을 진행해주세요.",
         });
       } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "RegisterController.registerUser"
-          );
-        }
-        if (error instanceof Error) {
-          throw new CustomError(
-            error.message,
-            400,
-            "RegisterController.registerUser"
-          );
-        }
-
-        throw new CustomError(
-          "회원가입 요청이 유효하지 않습니다.",
-          400,
-          "RegisterController.registerUser"
-        );
+        this.handleZodError(error, "registerUser");
       }
     }
   );
+
+  /**
+   * 회원가입 시 중복 체크 로직 통합
+   */
+  private async checkDuplication(data: RegisterDTO): Promise<void> {
+    const existingUserId = await this.registerService.isUserIdDuplicated(
+      data.userId
+    );
+    if (existingUserId) {
+      throw new CustomError(
+        "이미 사용 중인 아이디입니다.",
+        409,
+        "RegisterController.registerUser"
+      );
+    }
+
+    const existingUserNickname =
+      await this.registerService.isUserNicknameDuplicated(data.userNickname);
+    if (existingUserNickname) {
+      throw new CustomError(
+        "이미 사용 중인 닉네임입니다.",
+        409,
+        "RegisterController.registerUser"
+      );
+    }
+
+    const existingUserEmail = await this.registerService.isUserEmailDuplicated(
+      data.userEmail
+    );
+    if (existingUserEmail) {
+      throw new CustomError(
+        "이미 사용 중인 이메일입니다.",
+        409,
+        "RegisterController.registerUser"
+      );
+    }
+  }
 
   // GET /verify/:token
   public verifyEmail = asyncHandler(
@@ -199,25 +156,7 @@ export class RegisterController {
         await this.registerService.verifyEmail(token);
         res.json({ message: "이메일이 성공적으로 인증되었습니다." });
       } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "RegisterController.verifyEmail"
-          );
-        }
-        if (error instanceof Error) {
-          throw new CustomError(
-            error.message,
-            400,
-            "RegisterController.verifyEmail"
-          );
-        }
-        throw new CustomError(
-          "이메일 인증 중 오류가 발생했습니다.",
-          400,
-          "RegisterController.verifyEmail"
-        );
+        this.handleZodError(error, "verifyEmail");
       }
     }
   );

@@ -5,51 +5,26 @@ import { WorkoutDetail } from "../entities/WorkoutDetail";
 import { Exercise } from "../entities/Exercise";
 import { CustomError } from "../utils/customError";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
-import { BodyLogStatsFilterDTO } from "../schema/BodyLogSchema";
-import { ExerciseWeightStatsFilterDTO } from "../schema/WorkoutSchema";
-import { ExerciseWeightStatsDTO } from "../dtos/WorkoutDTO";
 import { WorkoutOfTheDay } from "../entities/WorkoutOfTheDay";
-import { BodyPartVolumeStatsFilterDTO } from "../schema/WorkoutSchema";
+import { DateUtil } from "../utils/dateUtil";
+import {
+  StatsDataPoint,
+  CardioStatsDTO,
+  VolumeDataPoint,
+  ExerciseWeightStatsDTO,
+  CardioDataPoint,
+  BodyPartVolumeStatsDTO,
+} from "../dtos/StatisticsDTO";
+import { BodyLogStatsFilterDTO, BodyLogStatsDTO } from "../dtos/BodyLogDTO";
+import {
+  ExerciseWeightStatsFilterDTO,
+  CardioStatsFilterDTO,
+  BodyPartVolumeStatsFilterDTO,
+} from "../dtos/WorkoutDTO";
 
-// 통계 데이터 포인트에 추정치 플래그 추가
-export interface StatsDataPoint {
-  date: string;
-  value: number | null;
-  isEstimated: boolean;
-}
-
-// 유산소 운동 통계 관련 인터페이스 추가
-export interface CardioFilterDTO {
-  period?: "1months" | "3months" | "6months" | "1year" | "2years" | "all";
-  exerciseSeqs?: number[];
-}
-
-export interface CardioDataPoint {
-  date: string;
-  value: number | null;
-}
-
-export interface CardioStatsDTO {
-  exerciseName: string;
-  exerciseSeq: number;
-  exerciseType: string;
-  distance: CardioDataPoint[];
-  duration: CardioDataPoint[];
-  avgSpeed: CardioDataPoint[];
-}
-
-// 볼륨 데이터 포인트 인터페이스 추가
-export interface VolumeDataPoint {
-  date: string;
-  value: number;
-}
-
-// 볼륨 통계 DTO 인터페이스 추가
-export interface BodyPartVolumeStatsDTO {
-  bodyPart: string;
-  volumeData: VolumeDataPoint[];
-}
-
+/**
+ * 통계 관련 서비스
+ */
 export class StatisticsService {
   private dataSource: DataSource;
   private bodyLogRepository: Repository<BodyLog>;
@@ -59,6 +34,12 @@ export class StatisticsService {
     this.bodyLogRepository = this.dataSource.getRepository(BodyLog);
   }
 
+  /**
+   * 바디로그 통계 데이터 조회
+   * @param userSeq 사용자 시퀀스
+   * @param filter 필터 옵션
+   * @returns 바디로그 통계 데이터
+   */
   @ErrorDecorator("StatisticsService.getBodyLogStats")
   public async getBodyLogStats(
     userSeq: number,
@@ -69,28 +50,8 @@ export class StatisticsService {
     bodyFat: StatsDataPoint[];
   }> {
     // 기간 설정
-    let startDate = new Date();
+    const startDate = DateUtil.calculateStartDate(filter.period);
     const endDate = new Date();
-
-    switch (filter.period) {
-      case "3months":
-        startDate.setMonth(startDate.getMonth() - 3);
-        break;
-      case "6months":
-        startDate.setMonth(startDate.getMonth() - 6);
-        break;
-      case "1year":
-        startDate.setFullYear(startDate.getFullYear() - 1);
-        break;
-      case "2years":
-        startDate.setFullYear(startDate.getFullYear() - 2);
-        break;
-      case "all":
-        startDate = new Date(0); // 모든 기록 조회
-        break;
-      default:
-        startDate.setFullYear(startDate.getFullYear() - 1); // 기본값: 1년
-    }
 
     // 데이터 조회
     const bodyLogs = await this.bodyLogRepository
@@ -126,54 +87,41 @@ export class StatisticsService {
       return result;
     }
 
-    // 주기별 데이터 처리
-    let intervalMilliseconds = 0;
-    switch (filter.interval) {
-      case "1week":
-        intervalMilliseconds = 7 * 24 * 60 * 60 * 1000; // 1주
-        break;
-      case "2weeks":
-        intervalMilliseconds = 14 * 24 * 60 * 60 * 1000; // 2주
-        break;
-      case "4weeks":
-        intervalMilliseconds = 28 * 24 * 60 * 60 * 1000; // 4주
-        break;
-      case "3months":
-        intervalMilliseconds = 90 * 24 * 60 * 60 * 1000; // 약 3개월
-        break;
-      case "all":
-        // 전체보기 옵션: 그룹화 없이 모든 데이터 사용
-        bodyLogs.forEach((log) => {
-          const date = log.recordDate.toISOString().split("T")[0];
+    // 전체보기 옵션 처리
+    if (filter.interval === "all") {
+      bodyLogs.forEach((log) => {
+        const date = DateUtil.formatDateToYYYYMMDD(log.recordDate);
 
-          if (log.bodyWeight !== null) {
-            result.bodyWeight.push({
-              date,
-              value: log.bodyWeight,
-              isEstimated: false, // 실제 기록이므로 추정치 아님
-            });
-          }
-          if (log.muscleMass !== null) {
-            result.muscleMass.push({
-              date,
-              value: log.muscleMass,
-              isEstimated: false, // 실제 기록이므로 추정치 아님
-            });
-          }
-          if (log.bodyFat !== null) {
-            result.bodyFat.push({
-              date,
-              value: log.bodyFat,
-              isEstimated: false, // 실제 기록이므로 추정치 아님
-            });
-          }
-        });
+        if (log.bodyWeight !== null) {
+          result.bodyWeight.push({
+            date,
+            value: log.bodyWeight,
+            isEstimated: false, // 실제 기록이므로 추정치 아님
+          });
+        }
+        if (log.muscleMass !== null) {
+          result.muscleMass.push({
+            date,
+            value: log.muscleMass,
+            isEstimated: false, // 실제 기록이므로 추정치 아님
+          });
+        }
+        if (log.bodyFat !== null) {
+          result.bodyFat.push({
+            date,
+            value: log.bodyFat,
+            isEstimated: false, // 실제 기록이므로 추정치 아님
+          });
+        }
+      });
 
-        // 이미 데이터를 처리했으므로 여기서 반환
-        return result;
-      default:
-        intervalMilliseconds = 7 * 24 * 60 * 60 * 1000; // 기본값: 1주
+      return result;
     }
+
+    // 주기별 데이터 처리
+    const intervalMilliseconds = DateUtil.getIntervalMilliseconds(
+      filter.interval
+    );
 
     // 그룹화 및 평균 계산
     const groupedData: {
@@ -222,10 +170,10 @@ export class StatisticsService {
     Object.values(groupedData)
       .sort((a, b) => a.timestamp - b.timestamp)
       .forEach((group) => {
-        const date = new Date(group.timestamp).toISOString().split("T")[0];
+        const date = DateUtil.formatDateToYYYYMMDD(new Date(group.timestamp));
 
         // 주기와 실제 데이터 간격을 비교하여 추정치 여부 결정
-        const isEstimated = this.isDataEstimated(
+        const isEstimated = DateUtil.isDataEstimated(
           group.dates,
           intervalMilliseconds
         );
@@ -276,56 +224,20 @@ export class StatisticsService {
     return result;
   }
 
-  private isDataEstimated(
-    dates: Date[],
-    intervalMilliseconds: number
-  ): boolean {
-    // 데이터가 1개만 있으면 추정치가 아님
-    if (dates.length <= 1) return false;
-
-    // 데이터 간격이 설정된 주기와 맞지 않으면 추정치로 간주
-    const sortedDates = [...dates].sort((a, b) => a.getTime() - b.getTime());
-
-    // 첫 날짜와 마지막 날짜 간격이 설정 주기보다 크면 추정치
-    const firstDate = sortedDates[0];
-    const lastDate = sortedDates[sortedDates.length - 1];
-
-    // 주기의 80% 이상 차이나면 추정치로 간주
-    const threshold = intervalMilliseconds * 0.8;
-    return lastDate.getTime() - firstDate.getTime() > threshold;
-  }
-
+  /**
+   * 운동 무게 통계 조회
+   * @param userSeq 사용자 시퀀스
+   * @param filter 필터 옵션
+   * @returns 운동 무게 통계 데이터
+   */
   @ErrorDecorator("StatisticsService.getExerciseWeightStats")
   public async getExerciseWeightStats(
     userSeq: number,
     filter: ExerciseWeightStatsFilterDTO
   ): Promise<ExerciseWeightStatsDTO> {
     // 기간 설정
-    let startDate = new Date();
+    const startDate = DateUtil.calculateStartDate(filter.period);
     const endDate = new Date();
-
-    switch (filter.period) {
-      case "1months":
-        startDate.setMonth(startDate.getMonth() - 1);
-        break;
-      case "3months":
-        startDate.setMonth(startDate.getMonth() - 3);
-        break;
-      case "6months":
-        startDate.setMonth(startDate.getMonth() - 6);
-        break;
-      case "1year":
-        startDate.setFullYear(startDate.getFullYear() - 1);
-        break;
-      case "2years":
-        startDate.setFullYear(startDate.getFullYear() - 2);
-        break;
-      case "all":
-        startDate = new Date(0); // 모든 기록 조회
-        break;
-      default:
-        startDate.setMonth(startDate.getMonth() - 3); // 기본값: 3개월
-    }
 
     // 운동 정보 조회
     const exerciseRepo = this.dataSource.getRepository(Exercise);
@@ -386,6 +298,9 @@ export class StatisticsService {
     return result;
   }
 
+  /**
+   * 운동 세트 데이터를 RM 타입에 맞게 처리
+   */
   private processWeightData(
     workoutDetails: WorkoutDetail[],
     rmType: string,
@@ -400,9 +315,9 @@ export class StatisticsService {
     workoutDetails.forEach((detail) => {
       if (!detail.workoutOfTheDay) return;
 
-      const date = detail.workoutOfTheDay.recordDate
-        .toISOString()
-        .split("T")[0];
+      const date = DateUtil.formatDateToYYYYMMDD(
+        detail.workoutOfTheDay.recordDate
+      );
 
       if (!workoutsByDate.has(date)) {
         workoutsByDate.set(date, { details: [], exactRmExists: false });
@@ -498,6 +413,9 @@ export class StatisticsService {
     return weightByDate;
   }
 
+  /**
+   * 세트가 RM 타입에 적합한지 확인
+   */
   private isValidForRmType(detail: WorkoutDetail, rmType: string): boolean {
     // 무게나 반복 횟수가 없는 경우 무시
     if (detail.weight === null || detail.reps === null) return false;
@@ -514,6 +432,9 @@ export class StatisticsService {
     return false;
   }
 
+  /**
+   * 무게 데이터를 주기별로 그룹화
+   */
   private groupWeightsByInterval(
     weightData: StatsDataPoint[],
     interval: string
@@ -526,23 +447,7 @@ export class StatisticsService {
     }));
 
     // 주기별 밀리초 계산
-    let intervalMilliseconds = 0;
-    switch (interval) {
-      case "1week":
-        intervalMilliseconds = 7 * 24 * 60 * 60 * 1000; // 1주
-        break;
-      case "2weeks":
-        intervalMilliseconds = 14 * 24 * 60 * 60 * 1000; // 2주
-        break;
-      case "4weeks":
-        intervalMilliseconds = 28 * 24 * 60 * 60 * 1000; // 4주
-        break;
-      case "3months":
-        intervalMilliseconds = 90 * 24 * 60 * 60 * 1000; // 약 3개월
-        break;
-      default:
-        intervalMilliseconds = 7 * 24 * 60 * 60 * 1000; // 기본값: 1주
-    }
+    const intervalMilliseconds = DateUtil.getIntervalMilliseconds(interval);
 
     // 그룹화 및 최대값 계산
     const groupedData: {
@@ -579,7 +484,7 @@ export class StatisticsService {
     return Object.values(groupedData)
       .sort((a, b) => a.timestamp - b.timestamp)
       .map((group) => {
-        const date = new Date(group.timestamp).toISOString().split("T")[0];
+        const date = DateUtil.formatDateToYYYYMMDD(new Date(group.timestamp));
 
         // 값이 없는 경우
         if (group.values.length === 0) {
@@ -601,7 +506,7 @@ export class StatisticsService {
         // 2. 그룹 내 데이터가 여러 개이고, 주기와 실제 데이터 간격이 맞지 않는 경우
         const isEstimatedByGrouping =
           group.values.length > 1 &&
-          this.isTimespanEstimated(group.timestamps, intervalMilliseconds);
+          DateUtil.isTimespanEstimated(group.timestamps, intervalMilliseconds);
 
         return {
           date,
@@ -611,53 +516,20 @@ export class StatisticsService {
       });
   }
 
-  private isTimespanEstimated(
-    timestamps: number[],
-    intervalMilliseconds: number
-  ): boolean {
-    if (timestamps.length <= 1) return false;
-
-    const sortedTimestamps = [...timestamps].sort((a, b) => a - b);
-    const firstTimestamp = sortedTimestamps[0];
-    const lastTimestamp = sortedTimestamps[sortedTimestamps.length - 1];
-
-    // 타임스탬프 간격이 설정 주기의 80% 이상인 경우 추정치로 간주
-    const threshold = intervalMilliseconds * 0.8;
-    return lastTimestamp - firstTimestamp > threshold;
-  }
-
-  //유산소 운동 통계 조회
+  /**
+   * 유산소 운동 통계 조회
+   * @param userSeq 사용자 시퀀스
+   * @param filter 필터 옵션
+   * @returns 유산소 운동 통계 데이터
+   */
   @ErrorDecorator("StatisticsService.getCardioStats")
   public async getCardioStats(
     userSeq: number,
-    filter: CardioFilterDTO
+    filter: CardioStatsFilterDTO
   ): Promise<CardioStatsDTO[]> {
     // 기간 설정
-    let startDate = new Date();
+    const startDate = DateUtil.calculateStartDate(filter.period);
     const endDate = new Date();
-
-    switch (filter.period) {
-      case "1months":
-        startDate.setMonth(startDate.getMonth() - 1);
-        break;
-      case "3months":
-        startDate.setMonth(startDate.getMonth() - 3);
-        break;
-      case "6months":
-        startDate.setMonth(startDate.getMonth() - 6);
-        break;
-      case "1year":
-        startDate.setFullYear(startDate.getFullYear() - 1);
-        break;
-      case "2years":
-        startDate.setFullYear(startDate.getFullYear() - 2);
-        break;
-      case "all":
-        startDate = new Date(0); // 모든 기록 조회
-        break;
-      default:
-        startDate.setMonth(startDate.getMonth() - 3); // 기본값: 3개월
-    }
 
     // 운동 정보 조회
     const exerciseRepo = this.dataSource.getRepository(Exercise);
@@ -717,9 +589,9 @@ export class StatisticsService {
       workoutDetails.forEach((detail) => {
         if (!detail.workoutOfTheDay) return;
 
-        const date = detail.workoutOfTheDay.recordDate
-          .toISOString()
-          .split("T")[0];
+        const date = DateUtil.formatDateToYYYYMMDD(
+          detail.workoutOfTheDay.recordDate
+        );
 
         // 같은 날짜에 여러 세트가 있을 경우 합산
         const existing = dateMap.get(date) || {
@@ -813,21 +685,23 @@ export class StatisticsService {
     return mapping[bodyPart] || bodyPart;
   }
 
+  /**
+   * 운동 부위별 볼륨 통계 조회
+   * @param userSeq 사용자 시퀀스
+   * @param filter 필터 옵션
+   * @returns 운동 부위별 볼륨 통계 데이터
+   */
   @ErrorDecorator("StatisticsService.getBodyPartVolumeStats")
   public async getBodyPartVolumeStats(
     userSeq: number,
     filter: BodyPartVolumeStatsFilterDTO
   ): Promise<BodyPartVolumeStatsDTO> {
     try {
-      if (!this.dataSource.isInitialized) {
-        await this.dataSource.initialize();
-      }
-
       // 필터 값 설정
       const { period, interval, bodyPart } = filter;
 
       // 기간 계산 - 주기가 기간에 걸쳐 있을 때 전체 주기 데이터를 포함하도록 시작일 확장
-      let startDate = this.calculateStartDate(period);
+      let startDate = DateUtil.calculateStartDate(period);
       const endDate = new Date();
 
       // 주기에 맞게 시작일 확장 (예: 기간이 1개월이고 주기가 1주일 때, 시작일을 앞으로 6일 확장)
@@ -887,7 +761,7 @@ export class StatisticsService {
           const volume = weight * reps;
 
           // 날짜 포맷팅 (YYYY-MM-DD)
-          const dateStr = workoutDate.toISOString().split("T")[0];
+          const dateStr = DateUtil.formatDateToYYYYMMDD(workoutDate);
 
           // 해당 날짜의 볼륨 누적
           volumeData[dateStr] = (volumeData[dateStr] || 0) + volume;
@@ -913,7 +787,9 @@ export class StatisticsService {
     }
   }
 
-  // 전체 주기 옵션을 위한 함수 추가
+  /**
+   * 전체 주기 옵션을 위한 볼륨 데이터 포맷
+   */
   private formatVolumeDataForAll(volumeData: {
     [date: string]: number;
   }): VolumeDataPoint[] {
@@ -928,40 +804,13 @@ export class StatisticsService {
       }));
   }
 
-  private calculateStartDate(period: string): Date {
-    const today = new Date();
-    const startDate = new Date(today);
-
-    switch (period) {
-      case "1months":
-        startDate.setMonth(today.getMonth() - 1);
-        break;
-      case "3months":
-        startDate.setMonth(today.getMonth() - 3);
-        break;
-      case "6months":
-        startDate.setMonth(today.getMonth() - 6);
-        break;
-      case "1year":
-        startDate.setFullYear(today.getFullYear() - 1);
-        break;
-      case "2years":
-        startDate.setFullYear(today.getFullYear() - 2);
-        break;
-      case "all":
-        startDate.setFullYear(2000); // 충분히 과거의 날짜
-        break;
-      default:
-        startDate.setMonth(today.getMonth() - 3);
-    }
-
-    return startDate;
-  }
-
+  /**
+   * 볼륨 데이터를 주기별로 그룹화
+   */
   private groupVolumeDataByInterval(
     volumeData: { [date: string]: number },
     interval: string,
-    period?: string
+    period: string = "3months"
   ): VolumeDataPoint[] {
     const result: VolumeDataPoint[] = [];
 
@@ -1007,7 +856,7 @@ export class StatisticsService {
             // 마지막 날짜를 넘어가면 중단
             if (currentDate > lastDate) break;
 
-            const dateStr = currentDate.toISOString().split("T")[0];
+            const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
             if (volumeData[dateStr]) {
               totalVolume += volumeData[dateStr];
             }
@@ -1015,11 +864,11 @@ export class StatisticsService {
 
           // 주 구간 라벨 생성 (MM-DD ~ MM-DD)
           // 정확한 월요일-일요일 날짜로 라벨 생성
-          const mondayLabel = this.formatDateToMMDD(currentMonday);
+          const mondayLabel = DateUtil.formatDateToMMDD(currentMonday);
 
           // 일요일 또는 마지막 날짜(lastDate가 nextSunday보다 이전인 경우)
           const endDate = nextSunday > lastDate ? lastDate : nextSunday;
-          const sundayLabel = this.formatDateToMMDD(endDate);
+          const sundayLabel = DateUtil.formatDateToMMDD(endDate);
 
           const weekLabel = `${mondayLabel} ~ ${sundayLabel}`;
 
@@ -1060,18 +909,18 @@ export class StatisticsService {
             // 마지막 날짜를 넘어가면 중단
             if (currentDate > lastDate) break;
 
-            const dateStr = currentDate.toISOString().split("T")[0];
+            const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
             if (volumeData[dateStr]) {
               totalVolume += volumeData[dateStr];
             }
           }
 
           // 2주 구간 라벨 생성
-          const mondayLabel = this.formatDateToMMDD(currentMonday);
+          const mondayLabel = DateUtil.formatDateToMMDD(currentMonday);
 
           // 2주 후 일요일 또는 마지막 날짜
           const endDate = nextSunday > lastDate ? lastDate : nextSunday;
-          const sundayLabel = this.formatDateToMMDD(endDate);
+          const sundayLabel = DateUtil.formatDateToMMDD(endDate);
 
           const twoWeekLabel = `${mondayLabel} ~ ${sundayLabel}`;
 
@@ -1113,7 +962,7 @@ export class StatisticsService {
 
           // 월간 데이터 합산
           while (currentDate <= endOfMonth && currentDate <= lastDate) {
-            const dateStr = currentDate.toISOString().split("T")[0];
+            const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
             if (volumeData[dateStr]) {
               totalVolume += volumeData[dateStr];
             }
@@ -1164,7 +1013,7 @@ export class StatisticsService {
 
           // 분기 데이터 합산
           while (currentDate <= endOfQuarter && currentDate <= lastDate) {
-            const dateStr = currentDate.toISOString().split("T")[0];
+            const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
             if (volumeData[dateStr]) {
               totalVolume += volumeData[dateStr];
             }

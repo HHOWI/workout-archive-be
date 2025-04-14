@@ -1,4 +1,4 @@
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
 import { Server as HttpServer } from "http";
 import { JwtPayload } from "jsonwebtoken";
 import {
@@ -10,6 +10,7 @@ import {
 import { NotificationDTO } from "../dtos/NotificationDTO";
 import { verifyToken } from "../utils/jwtUtil";
 import cookie from "cookie";
+import { NotificationService } from "../services/NotificationService";
 
 export class SocketServerManager {
   private static instance: SocketServerManager;
@@ -123,7 +124,7 @@ export class SocketServerManager {
   }
 
   // 모든 연결된 클라이언트에 메시지 전송
-  public broadcastMessage(event: string, data: any): void {
+  public broadcastMessage(event: SocketEvent, data: any): void {
     this.io.emit(event, data);
   }
 

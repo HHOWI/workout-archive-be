@@ -1,22 +1,8 @@
 import { z } from "zod";
+import { CommonCursorPaginationSchema } from "./BaseSchema";
 
 // 기존 커서 기반 페이징 스키마 (ID 기반)
-export const CursorPaginationSchema = z.object({
-  limit: z
-    .string()
-    .or(z.number())
-    .transform((val) => Number(val))
-    .refine((val) => !isNaN(val) && val >= 1 && val <= 100, {
-      message: "limit은 1에서 100 사이여야 합니다.",
-    })
-    .default("12"),
-  cursor: z
-    .string()
-    .or(z.number())
-    .transform((val) => Number(val))
-    .nullable()
-    .optional(),
-});
+export const CursorPaginationSchema = CommonCursorPaginationSchema;
 
 // 날짜 기반 커서 페이징 스키마 (날짜 + ID 기반)
 export const DateCursorPaginationSchema = z.object({
@@ -195,20 +181,13 @@ export const ExerciseWeightStatsFilterSchema = z.object({
     .max(5, "최대 5개까지의 운동만 선택 가능합니다."),
 });
 
-export type ExerciseWeightStatsFilterDTO = z.infer<
-  typeof ExerciseWeightStatsFilterSchema
->;
-
 // 유산소 운동 통계 필터 스키마 추가
 export const CardioStatsFilterSchema = z.object({
   period: z
     .enum(["1months", "3months", "6months", "1year", "2years", "all"])
-    .optional()
     .default("3months"),
   exerciseSeqs: z.array(z.number()).optional(),
 });
-
-export type CardioStatsFilterDTO = z.infer<typeof CardioStatsFilterSchema>;
 
 // 운동 볼륨 통계 필터 스키마 추가
 export const BodyPartVolumeStatsFilterSchema = z.object({
@@ -223,17 +202,11 @@ export const BodyPartVolumeStatsFilterSchema = z.object({
     .default("chest"),
 });
 
-export type BodyPartVolumeStatsFilterDTO = z.infer<
-  typeof BodyPartVolumeStatsFilterSchema
->;
-
 // 월별 운동 기록 조회 스키마
 export const MonthlyWorkoutSchema = z.object({
   year: z.number().int().min(2000).max(2100),
   month: z.number().int().min(1).max(12),
 });
-
-export type MonthlyWorkoutDTO = z.infer<typeof MonthlyWorkoutSchema>;
 
 // 월별 운동 통계 응답 스키마
 export const MonthlyWorkoutStatsSchema = z.object({
@@ -251,5 +224,3 @@ export const MonthlyWorkoutStatsSchema = z.object({
     daysInMonth: z.number(),
   }),
 });
-
-export type MonthlyWorkoutStatsDTO = z.infer<typeof MonthlyWorkoutStatsSchema>;

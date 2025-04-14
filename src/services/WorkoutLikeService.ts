@@ -1,208 +1,201 @@
-import { Repository, In } from "typeorm";
+import { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";
+import { CustomError } from "../utils/customError";
+import { WorkoutLikeResponseDTO } from "../dtos/WorkoutLikeDTO";
+import { WorkoutOfTheDay } from "../entities/WorkoutOfTheDay";
 import { WorkoutLike } from "../entities/WorkoutLike";
 import { User } from "../entities/User";
-import { WorkoutOfTheDay } from "../entities/WorkoutOfTheDay";
-import { CustomError } from "../utils/customError";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
-import { NotificationService } from "./NotificationService";
-import { CreateNotificationDTO } from "../dtos/NotificationDTO";
-import { NotificationType } from "../entities/Notification";
-import { WorkoutLikeResponseDTO } from "../dtos/WorkoutLikeDTO";
 
 export class WorkoutLikeService {
-  private likeRepository: Repository<WorkoutLike>;
-  private userRepository: Repository<User>;
+  private workoutLikeRepository: Repository<WorkoutLike>;
   private workoutRepository: Repository<WorkoutOfTheDay>;
-  private notificationService: NotificationService;
+  private userRepository: Repository<User>;
 
   constructor() {
-    this.likeRepository = AppDataSource.getRepository(WorkoutLike);
-    this.userRepository = AppDataSource.getRepository(User);
+    this.workoutLikeRepository = AppDataSource.getRepository(WorkoutLike);
     this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
-    this.notificationService = new NotificationService();
+    this.userRepository = AppDataSource.getRepository(User);
   }
 
   /**
-   * 워크아웃 좋아요 토글
+   * 운동 좋아요 토글 - 좋아요 추가 또는 취소
+   * @param userSeq 사용자 시퀀스
+   * @param workoutOfTheDaySeq 운동 시퀀스
+   * @returns 좋아요 상태와 개수
    */
   @ErrorDecorator("WorkoutLikeService.toggleWorkoutLike")
   public async toggleWorkoutLike(
     userSeq: number,
     workoutOfTheDaySeq: number
   ): Promise<WorkoutLikeResponseDTO> {
-    try {
-      // 사용자 확인
-      const user = await this.userRepository.findOneBy({ userSeq });
-      if (!user) {
-        throw new CustomError(
-          "사용자를 찾을 수 없습니다.",
-          404,
-          "WorkoutLikeService.toggleWorkoutLike"
-        );
-      }
+    // 운동 존재 여부 확인
+    const workout = await this.workoutRepository.findOne({
+      where: {
+        workoutOfTheDaySeq,
+        isDeleted: 0,
+      },
+    });
 
-      // 워크아웃 확인
-      const workout = await this.workoutRepository.findOne({
-        where: { workoutOfTheDaySeq, isDeleted: 0 },
-        relations: ["user"],
-      });
-      if (!workout) {
-        throw new CustomError(
-          "워크아웃을 찾을 수 없습니다.",
-          404,
-          "WorkoutLikeService.toggleWorkoutLike"
-        );
-      }
-
-      // 이미 좋아요 했는지 확인
-      const existingLike = await this.likeRepository.findOneBy({
-        workoutOfTheDay: { workoutOfTheDaySeq },
-        user: { userSeq },
-      });
-
-      let isLiked = false;
-
-      if (existingLike) {
-        // 좋아요 취소
-        await this.likeRepository.remove(existingLike);
-        workout.workoutLikeCount = Math.max(0, workout.workoutLikeCount - 1);
-      } else {
-        // 좋아요 추가
-        const newLike = new WorkoutLike();
-        newLike.workoutOfTheDay = workout;
-        newLike.user = user;
-        await this.likeRepository.save(newLike);
-        workout.workoutLikeCount += 1;
-        isLiked = true;
-
-        // 오운완 작성자에게 좋아요 알림 생성 (본인 제외)
-        if (workout.user.userSeq !== userSeq) {
-          const notificationDto = new CreateNotificationDTO();
-          notificationDto.receiverSeq = workout.user.userSeq;
-          notificationDto.senderSeq = userSeq;
-          notificationDto.notificationType = NotificationType.WORKOUT_LIKE;
-          notificationDto.notificationContent = `${user.userNickname}님이 회원님의 오운완을 좋아합니다.`;
-          notificationDto.workoutOfTheDaySeq = workoutOfTheDaySeq;
-          await this.notificationService.createNotification(notificationDto);
-        }
-      }
-
-      // 워크아웃 좋아요 수 업데이트
-      await this.workoutRepository.save(workout);
-      const likeCount = await this.getWorkoutLikeCount(workoutOfTheDaySeq);
-
-      return { isLiked, likeCount };
-    } catch (error) {
-      if (error instanceof CustomError) {
-        throw error;
-      }
+    if (!workout) {
       throw new CustomError(
-        "워크아웃 좋아요 처리 중 오류가 발생했습니다.",
-        500,
+        "존재하지 않는 운동입니다.",
+        404,
         "WorkoutLikeService.toggleWorkoutLike"
       );
     }
+
+    // 좋아요 여부 확인
+    const existingLike = await this.workoutLikeRepository.findOne({
+      where: {
+        user: { userSeq },
+        workoutOfTheDay: { workoutOfTheDaySeq },
+      },
+    });
+
+    let isLiked: boolean;
+
+    // 좋아요 추가 또는 취소
+    if (existingLike) {
+      // 좋아요 삭제
+      await this.workoutLikeRepository.remove(existingLike);
+      isLiked = false;
+    } else {
+      // 사용자 및 운동 정보 조회
+      const user = await this.userRepository.findOneBy({ userSeq });
+
+      if (!user) {
+        throw new CustomError(
+          "존재하지 않는 사용자입니다.",
+          404,
+          "WorkoutLikeService.toggleWorkoutLike"
+        );
+      }
+
+      // 좋아요 추가
+      const newLike = new WorkoutLike();
+      newLike.user = user;
+      newLike.workoutOfTheDay = workout;
+
+      await this.workoutLikeRepository.save(newLike);
+      isLiked = true;
+    }
+
+    // 좋아요 개수 조회
+    const likeCount = await this.getWorkoutLikeCount(workoutOfTheDaySeq);
+
+    return { isLiked, likeCount };
   }
 
   /**
-   * 워크아웃 좋아요 상태 확인
+   * 운동 좋아요 상태 조회
+   * @param userSeq 사용자 시퀀스
+   * @param workoutOfTheDaySeq 운동 시퀀스
+   * @returns 좋아요 여부
    */
   @ErrorDecorator("WorkoutLikeService.getWorkoutLikeStatus")
   public async getWorkoutLikeStatus(
-    userSeq: number | undefined,
+    userSeq: number,
     workoutOfTheDaySeq: number
   ): Promise<boolean> {
-    if (!userSeq) return false;
+    // 운동 존재 여부 확인
+    const workout = await this.workoutRepository.findOne({
+      where: {
+        workoutOfTheDaySeq,
+        isDeleted: 0,
+      },
+    });
 
-    try {
-      // 좋아요 여부 확인
-      const existingLike = await this.likeRepository.findOneBy({
-        workoutOfTheDay: { workoutOfTheDaySeq },
-        user: { userSeq },
-      });
-
-      return !!existingLike;
-    } catch (error) {
-      console.error("좋아요 상태 확인 중 오류:", error);
-      return false;
+    if (!workout) {
+      throw new CustomError(
+        "존재하지 않는 운동입니다.",
+        404,
+        "WorkoutLikeService.getWorkoutLikeStatus"
+      );
     }
+
+    // 좋아요 여부 확인
+    const like = await this.workoutLikeRepository.findOne({
+      where: {
+        user: { userSeq },
+        workoutOfTheDay: { workoutOfTheDaySeq },
+      },
+    });
+
+    return !!like;
   }
 
   /**
-   * 워크아웃 좋아요 수 조회
+   * 운동 좋아요 개수 조회
+   * @param workoutOfTheDaySeq 운동 시퀀스
+   * @returns 좋아요 개수
    */
   @ErrorDecorator("WorkoutLikeService.getWorkoutLikeCount")
   public async getWorkoutLikeCount(
     workoutOfTheDaySeq: number
   ): Promise<number> {
-    try {
-      // 워크아웃 확인 - 좋아요 카운트 필드만 조회
-      const workout = await this.workoutRepository.findOne({
-        where: { workoutOfTheDaySeq, isDeleted: 0 },
-        select: ["workoutLikeCount"],
-      });
+    // 운동 존재 여부 확인
+    const workout = await this.workoutRepository.findOne({
+      where: {
+        workoutOfTheDaySeq,
+        isDeleted: 0,
+      },
+    });
 
-      if (!workout) {
-        throw new CustomError(
-          "워크아웃을 찾을 수 없습니다.",
-          404,
-          "WorkoutLikeService.getWorkoutLikeCount"
-        );
-      }
-
-      // 저장된 좋아요 카운트 필드 반환
-      return workout.workoutLikeCount || 0;
-    } catch (error) {
-      if (error instanceof CustomError) {
-        throw error;
-      }
-      console.error("좋아요 수 조회 중 오류:", error);
-      return 0;
+    if (!workout) {
+      throw new CustomError(
+        "존재하지 않는 운동입니다.",
+        404,
+        "WorkoutLikeService.getWorkoutLikeCount"
+      );
     }
+
+    // 좋아요 개수 조회
+    const likeCount = await this.workoutLikeRepository.count({
+      where: {
+        workoutOfTheDay: { workoutOfTheDaySeq },
+      },
+    });
+
+    return likeCount;
   }
 
   /**
-   * 여러 워크아웃에 대한 좋아요 상태를 일괄 조회합니다.
+   * 여러 운동의 좋아요 상태 조회
+   * @param userSeq 사용자 시퀀스
+   * @param workoutOfTheDaySeqs 운동 시퀀스 배열
+   * @returns 운동별 좋아요 상태 객체
    */
   @ErrorDecorator("WorkoutLikeService.getBulkWorkoutLikeStatus")
   public async getBulkWorkoutLikeStatus(
     userSeq: number,
     workoutOfTheDaySeqs: number[]
   ): Promise<Record<number, boolean>> {
-    if (workoutOfTheDaySeqs.length === 0) {
+    if (!workoutOfTheDaySeqs.length) {
       return {};
     }
 
-    try {
-      // 좋아요 목록 조회
-      const likes = await this.likeRepository.find({
-        where: {
-          user: { userSeq },
-          workoutOfTheDay: { workoutOfTheDaySeq: In(workoutOfTheDaySeqs) },
-        },
-        relations: ["workoutOfTheDay"],
-      });
+    // 사용자가 좋아요한 운동 목록 조회
+    const likes = await this.workoutLikeRepository
+      .createQueryBuilder("workoutLike")
+      .innerJoinAndSelect("workoutLike.workoutOfTheDay", "workout")
+      .where("workoutLike.user.userSeq = :userSeq", { userSeq })
+      .andWhere("workout.workoutOfTheDaySeq IN (:...ids)", {
+        ids: workoutOfTheDaySeqs,
+      })
+      .getMany();
 
-      // 결과 맵 생성
-      const likeStatusMap: Record<number, boolean> = {};
-      for (const seq of workoutOfTheDaySeqs) {
-        likeStatusMap[seq] = false; // 기본값 false
-      }
-      for (const like of likes) {
-        if (like.workoutOfTheDay) {
-          likeStatusMap[like.workoutOfTheDay.workoutOfTheDaySeq] = true;
-        }
-      }
+    // 좋아요한 운동 시퀀스 집합 생성
+    const likedWorkoutSeqs = new Set(
+      likes.map((like) => like.workoutOfTheDay.workoutOfTheDaySeq)
+    );
 
-      return likeStatusMap;
-    } catch (error) {
-      console.error("워크아웃 좋아요 상태 일괄 조회 중 오류:", error);
-      // 오류 발생 시 빈 맵 반환
-      return workoutOfTheDaySeqs.reduce((acc, seq) => {
-        acc[seq] = false;
-        return acc;
-      }, {} as Record<number, boolean>);
+    // 결과 객체 생성
+    const result: Record<number, boolean> = {};
+    for (const seq of workoutOfTheDaySeqs) {
+      result[seq] = likedWorkoutSeqs.has(seq);
     }
+
+    return result;
   }
 }
