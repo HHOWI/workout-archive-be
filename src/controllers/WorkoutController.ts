@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { WorkoutService } from "../services/WorkoutService";
 import asyncHandler from "express-async-handler";
 import { CustomError } from "../utils/customError";
 import {
@@ -19,9 +18,12 @@ import {
   UpdateWorkoutDTO,
   MonthlyWorkoutDTO,
 } from "../dtos/WorkoutDTO";
+import { WorkoutOfTheDayService } from "../services/WorkoutOfTheDayService";
+import { WorkoutCalendarService } from "../services/WorkoutCalendarService";
 
 export class WorkoutController {
-  private workoutService = new WorkoutService();
+  private workoutOfTheDayService = new WorkoutOfTheDayService();
+  private workoutCalendarService = new WorkoutCalendarService();
   private workoutLikeService = new WorkoutLikeService();
 
   /**
@@ -66,7 +68,7 @@ export class WorkoutController {
         }
 
         const saveWorkoutDTO: SaveWorkoutDTO = result.data;
-        const saveResult = await this.workoutService.saveWorkoutRecord(
+        const saveResult = await this.workoutOfTheDayService.saveWorkoutRecord(
           userSeq,
           saveWorkoutDTO,
           req.file
@@ -115,7 +117,7 @@ export class WorkoutController {
 
         // 닉네임으로 사용자 정보와 운동 기록 가져오기
         const result =
-          await this.workoutService.getWorkoutRecordsByNicknameCursor(
+          await this.workoutOfTheDayService.getWorkoutRecordsByNicknameCursor(
             nickname,
             limit,
             cursor
@@ -149,9 +151,10 @@ export class WorkoutController {
         const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
         // 운동 기록 가져오기
-        const workout = await this.workoutService.getWorkoutRecordDetail(
-          workoutOfTheDaySeq
-        );
+        const workout =
+          await this.workoutOfTheDayService.getWorkoutRecordDetail(
+            workoutOfTheDaySeq
+          );
 
         // 좋아요 정보 추가
         let isLiked = false;
@@ -191,7 +194,9 @@ export class WorkoutController {
       try {
         const nickname: string = UserNicknameSchema.parse(req.params.nickname);
         const count =
-          await this.workoutService.getWorkoutOfTheDayCountByNickname(nickname);
+          await this.workoutOfTheDayService.getWorkoutOfTheDayCountByNickname(
+            nickname
+          );
 
         res.status(200).json({ count });
       } catch (error) {
@@ -212,10 +217,14 @@ export class WorkoutController {
    */
   public getRecentWorkoutRecords = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      const recentWorkoutRecords =
-        await this.workoutService.getRecentWorkoutRecords(userSeq);
-      res.status(200).json(recentWorkoutRecords);
+      try {
+        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+        const recentWorkouts =
+          await this.workoutOfTheDayService.getRecentWorkoutRecords(userSeq);
+        res.status(200).json(recentWorkouts);
+      } catch (error) {
+        throw error;
+      }
     }
   );
 
@@ -230,7 +239,7 @@ export class WorkoutController {
           req.params.workoutOfTheDaySeq
         );
 
-        await this.workoutService.softDeleteWorkout(
+        await this.workoutOfTheDayService.softDeleteWorkout(
           userSeq,
           workoutOfTheDaySeq
         );
@@ -262,15 +271,20 @@ export class WorkoutController {
           req.params.workoutOfTheDaySeq
         );
 
-        // 수정 데이터 유효성 검사
-        const updateResult = UpdateWorkoutSchema.safeParse(req.body);
-        if (!updateResult.success) {
-          this.handleValidationError(updateResult.error, "updateWorkout");
+        // JSON 데이터 안전 파싱
+        const updateData = ControllerUtil.parseJsonSafely(
+          req.body.updateData,
+          "updateData"
+        );
+
+        // Zod 유효성 검사
+        const result = UpdateWorkoutSchema.safeParse(updateData);
+        if (!result.success) {
+          this.handleValidationError(result.error, "updateWorkout");
         }
 
-        // 워크아웃 수정
-        const updateWorkoutDTO: UpdateWorkoutDTO = updateResult.data;
-        const updatedWorkout = await this.workoutService.updateWorkout(
+        const updateWorkoutDTO: UpdateWorkoutDTO = result.data;
+        const updatedWorkout = await this.workoutOfTheDayService.updateWorkout(
           userSeq,
           workoutOfTheDaySeq,
           updateWorkoutDTO
@@ -294,14 +308,14 @@ export class WorkoutController {
   );
 
   /**
-   * 특정 장소의 운동 기록 목록 조회 (인증 불필요)
+   * 장소별 운동 기록 조회 (인증 불필요)
    */
   public getWorkoutsByPlace = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       try {
         const placeSeq = SeqSchema.parse(req.params.placeSeq);
 
-        // 날짜 기반 페이징 파라미터 파싱
+        // 날짜 기반 커서 페이징 사용
         const paginationResult = DateCursorPaginationSchema.safeParse({
           limit: req.query.limit || 12,
           cursor: req.query.cursor || null,
@@ -317,12 +331,16 @@ export class WorkoutController {
         const { limit, cursor }: DateCursorPaginationDTO =
           paginationResult.data;
 
-        // 운동 기록 조회
-        const result = await this.workoutService.getWorkoutsOfTheDaysByPlaceId(
-          placeSeq,
-          limit,
-          cursor
-        );
+        // 로그인한 사용자 정보 (선택적)
+        const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
+
+        // 장소 ID로 운동 기록 조회
+        const result =
+          await this.workoutOfTheDayService.getWorkoutsOfTheDaysByPlaceId(
+            placeSeq,
+            limit,
+            cursor
+          );
 
         res.status(200).json(result);
       } catch (error) {
@@ -339,14 +357,17 @@ export class WorkoutController {
   );
 
   /**
-   * 장소 ID로 운동 기록 총 개수 조회 (인증 불필요)
+   * 장소별 운동 기록 총 개수 조회 (인증 불필요)
    */
   public getWorkoutOfTheDayCountByPlaceId = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       try {
-        const placeSeq: number = SeqSchema.parse(req.params.placeSeq);
+        const placeSeq = SeqSchema.parse(req.params.placeSeq);
+
         const count =
-          await this.workoutService.getWorkoutOfTheDayCountByPlaceId(placeSeq);
+          await this.workoutOfTheDayService.getWorkoutOfTheDayCountByPlaceId(
+            placeSeq
+          );
 
         res.status(200).json({ count });
       } catch (error) {
@@ -363,38 +384,36 @@ export class WorkoutController {
   );
 
   /**
-   * 월별 운동 날짜 목록 조회
-   * 캘린더 뷰에서 사용할 특정 사용자의 월별 운동 날짜 목록과 통계를 반환합니다.
+   * 월별 운동 기록 날짜 조회 (인증 불필요)
    */
   public getMonthlyWorkoutDates = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       try {
-        const { nickname } = req.params;
+        const nickname = UserNicknameSchema.parse(req.params.nickname);
+
         const { year, month } = req.query;
 
-        // 유효성 검사
+        // 월별 데이터 유효성 검사
         const result = MonthlyWorkoutSchema.safeParse({
           year: Number(year),
           month: Number(month),
         });
 
         if (!result.success) {
-          throw new CustomError(
-            "유효하지 않은 년도 또는 월입니다.",
-            400,
-            "WorkoutController.getMonthlyWorkoutDates"
-          );
+          this.handleValidationError(result.error, "getMonthlyWorkoutDates");
         }
 
-        const monthlyWorkoutDTO: MonthlyWorkoutDTO = result.data;
-        const response = await this.workoutService.getMonthlyWorkoutDates(
-          nickname,
-          monthlyWorkoutDTO.year,
-          monthlyWorkoutDTO.month
-        );
+        const { year: validYear, month: validMonth }: MonthlyWorkoutDTO =
+          result.data;
 
-        // 서비스에서 반환된 전체 응답을 그대로 전달 (workoutData와 stats 포함)
-        res.status(200).json(response);
+        const monthlyData =
+          await this.workoutCalendarService.getMonthlyWorkoutDates(
+            nickname,
+            validYear,
+            validMonth
+          );
+
+        res.status(200).json(monthlyData);
       } catch (error) {
         if (error instanceof ZodError) {
           throw new CustomError(

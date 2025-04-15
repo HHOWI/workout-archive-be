@@ -2,28 +2,31 @@ import {
   DataSource,
   QueryRunner,
   Repository,
-  In,
   LessThan,
   Between,
 } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { WorkoutOfTheDay } from "../entities/WorkoutOfTheDay";
-import { WorkoutDetail } from "../entities/WorkoutDetail";
-import { Exercise } from "../entities/Exercise";
 import { WorkoutPlace } from "../entities/WorkoutPlace";
+import { WorkoutDetail } from "../entities/WorkoutDetail";
 import { User } from "../entities/User";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
 import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
-import { deleteImage } from "../utils/fileUtiles";
 import { CommentService } from "./CommentService";
+import { WorkoutDetailService } from "./WorkoutDetailService";
+import { deleteImage } from "../utils/fileUtiles";
 
-export class WorkoutService {
+/**
+ * 운동 오브 더 데이(WOD) 관련 서비스
+ */
+export class WorkoutOfTheDayService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
   private workoutPlaceRepository: Repository<WorkoutPlace>;
   private userRepository: Repository<User>;
   private dataSource: DataSource;
   private commentService: CommentService;
+  private workoutDetailService: WorkoutDetailService;
 
   constructor() {
     this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
@@ -31,18 +34,29 @@ export class WorkoutService {
     this.userRepository = AppDataSource.getRepository(User);
     this.dataSource = AppDataSource;
     this.commentService = new CommentService();
+    this.workoutDetailService = new WorkoutDetailService();
   }
 
-  // 이미지 업로드 함수
-  @ErrorDecorator("WorkoutService.uploadWorkoutImageToStorage")
+  /**
+   * 이미지 업로드 함수
+   * @param file 업로드할 파일
+   * @returns 이미지 경로
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.uploadWorkoutImageToStorage")
   private async uploadWorkoutImageToStorage(
     file: Express.Multer.File
   ): Promise<string> {
     return `${process.env.POST_UPLOAD_PATH}/${file.filename}`;
   }
 
-  // 운동 기록 저장
-  @ErrorDecorator("WorkoutService.saveWorkoutRecord")
+  /**
+   * 운동 기록 저장
+   * @param userSeq 사용자 번호
+   * @param saveWorkoutDTO 저장할 운동 데이터
+   * @param file 업로드할 이미지 파일 (선택)
+   * @returns 저장된 운동 ID
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.saveWorkoutRecord")
   async saveWorkoutRecord(
     userSeq: number,
     saveWorkoutDTO: SaveWorkoutDTO,
@@ -56,7 +70,7 @@ export class WorkoutService {
       throw new CustomError(
         "사용자를 찾을 수 없습니다.",
         404,
-        "WorkoutService.saveWorkoutRecord"
+        "WorkoutOfTheDayService.saveWorkoutRecord"
       );
     }
 
@@ -84,11 +98,12 @@ export class WorkoutService {
       await queryRunner.manager.save(workoutOfTheDay);
 
       // 2. WorkoutDetail 저장 및 mainExerciseType 계산
-      const { details, mainExerciseType } = await this.saveWorkoutDetails(
-        queryRunner,
-        workoutOfTheDay,
-        saveWorkoutDTO.workoutData.exerciseRecords
-      );
+      const { details, mainExerciseType } =
+        await this.workoutDetailService.saveWorkoutDetails(
+          queryRunner,
+          workoutOfTheDay,
+          saveWorkoutDTO.workoutData.exerciseRecords
+        );
 
       // 3. mainExerciseType 설정 및 업데이트
       if (mainExerciseType) {
@@ -104,14 +119,18 @@ export class WorkoutService {
         : new CustomError(
             "운동 기록 저장 실패",
             500,
-            "WorkoutService.saveWorkoutRecord"
+            "WorkoutOfTheDayService.saveWorkoutRecord"
           );
     } finally {
       await queryRunner.release();
     }
   }
 
-  // 운동 장소 가져오기 또는 생성
+  /**
+   * 운동 장소 가져오기 또는 생성
+   * @param placeInfo 장소 정보
+   * @returns WorkoutPlace 객체 또는 null
+   */
   private async getOrCreateWorkoutPlace(
     placeInfo?: SaveWorkoutDTO["placeInfo"]
   ): Promise<WorkoutPlace | null> {
@@ -131,59 +150,14 @@ export class WorkoutService {
     return workoutPlace;
   }
 
-  // 운동 상세 기록 저장
-  private async saveWorkoutDetails(
-    queryRunner: QueryRunner,
-    workoutOfTheDay: WorkoutOfTheDay,
-    exerciseRecords: SaveWorkoutDTO["workoutData"]["exerciseRecords"]
-  ): Promise<{ details: WorkoutDetail[]; mainExerciseType?: string }> {
-    const exerciseSeqs = exerciseRecords.map(
-      (record) => record.exercise.exerciseSeq
-    );
-    const exercises = await queryRunner.manager.find(Exercise, {
-      where: { exerciseSeq: In(exerciseSeqs) },
-    });
-    const exerciseMap = new Map(exercises.map((ex) => [ex.exerciseSeq, ex]));
-
-    const exerciseTypeCounts: Record<string, number> = {};
-    const details: WorkoutDetail[] = [];
-
-    for (const record of exerciseRecords) {
-      const exercise = exerciseMap.get(record.exercise.exerciseSeq);
-      if (!exercise) {
-        throw new CustomError(
-          `운동 ID ${record.exercise.exerciseSeq}를 찾을 수 없습니다.`,
-          404,
-          "WorkoutService.saveWorkoutDetails"
-        );
-      }
-      if (exercise.exerciseType) {
-        exerciseTypeCounts[exercise.exerciseType] =
-          (exerciseTypeCounts[exercise.exerciseType] || 0) + record.sets.length;
-      }
-      const workoutDetails = record.sets.map((set, index) =>
-        queryRunner.manager.create(WorkoutDetail, {
-          workoutOfTheDay,
-          exercise,
-          weight: set.weight ?? null,
-          reps: set.reps ?? null,
-          setIndex: index + 1,
-          distance: set.distance ?? null,
-          recordTime: set.time ?? null,
-        })
-      );
-      details.push(...workoutDetails);
-    }
-
-    await queryRunner.manager.save(details);
-    const mainExerciseType = Object.entries(exerciseTypeCounts).sort(
-      ([, a], [, b]) => b - a
-    )[0]?.[0];
-    return { details, mainExerciseType };
-  }
-
-  // 커서 기반 페이징을 이용한 워크아웃 기록 조회 (날짜 기반)
-  @ErrorDecorator("WorkoutService.getWorkoutRecordsByNicknameCursor")
+  /**
+   * 커서 기반 페이징을 이용한 워크아웃 기록 조회 (날짜 기반)
+   * @param nickname 사용자 닉네임
+   * @param limit 페이지 크기
+   * @param cursor 커서 값
+   * @returns 운동 기록 목록과 다음 커서
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.getWorkoutRecordsByNicknameCursor")
   async getWorkoutRecordsByNicknameCursor(
     nickname: string,
     limit: number = 12,
@@ -194,7 +168,7 @@ export class WorkoutService {
     limit: number;
   }> {
     console.log(
-      `[WorkoutService] 닉네임 ${nickname}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
+      `[WorkoutOfTheDayService] 닉네임 ${nickname}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
     );
 
     // 유효성 검사 - 기본값 설정
@@ -215,7 +189,7 @@ export class WorkoutService {
         }
 
         console.log(
-          `[WorkoutService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
+          `[WorkoutOfTheDayService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
         );
       } catch (error) {
         console.error("커서 파싱 오류:", error);
@@ -257,7 +231,9 @@ export class WorkoutService {
 
     // 총 레코드 수 가져오기 (디버깅용)
     const totalCount = await workoutsQuery.getCount();
-    console.log(`[WorkoutService] 조건에 맞는 총 레코드 수: ${totalCount}`);
+    console.log(
+      `[WorkoutOfTheDayService] 조건에 맞는 총 레코드 수: ${totalCount}`
+    );
 
     const workouts = await workoutsQuery.take(limit + 1).getMany();
 
@@ -292,14 +268,18 @@ export class WorkoutService {
     );
 
     console.log(
-      `[WorkoutService] 조회 결과 - 결과 개수: ${workoutsWithCommentCount.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
+      `[WorkoutOfTheDayService] 조회 결과 - 결과 개수: ${workoutsWithCommentCount.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
     );
 
     return { workouts: workoutsWithCommentCount, nextCursor, limit };
   }
 
-  // 특정 운동 기록 상세 조회
-  @ErrorDecorator("WorkoutService.getWorkoutRecordDetail")
+  /**
+   * 특정 운동 기록 상세 조회
+   * @param workoutOfTheDaySeq 조회할 운동 ID
+   * @returns 운동 기록 상세 정보
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.getWorkoutRecordDetail")
   async getWorkoutRecordDetail(
     workoutOfTheDaySeq: number
   ): Promise<WorkoutOfTheDay> {
@@ -321,7 +301,7 @@ export class WorkoutService {
       throw new CustomError(
         "운동 기록을 찾을 수 없습니다.",
         404,
-        "WorkoutService.getWorkoutRecordDetail"
+        "WorkoutOfTheDayService.getWorkoutRecordDetail"
       );
     }
 
@@ -333,8 +313,12 @@ export class WorkoutService {
     return workout;
   }
 
-  // 닉네임으로 운동 기록 총 개수 조회
-  @ErrorDecorator("WorkoutService.getWorkoutOfTheDayCountByNickname")
+  /**
+   * 닉네임으로 운동 기록 총 개수 조회
+   * @param nickname 사용자 닉네임
+   * @returns 운동 기록 총 개수
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.getWorkoutOfTheDayCountByNickname")
   async getWorkoutOfTheDayCountByNickname(nickname: string): Promise<number> {
     const userRepository = this.dataSource.getRepository(User);
     const user = await userRepository.findOne({
@@ -345,7 +329,7 @@ export class WorkoutService {
       throw new CustomError(
         "사용자를 찾을 수 없습니다.",
         404,
-        "WorkoutService.getWorkoutOfTheDayCountByNickname"
+        "WorkoutOfTheDayService.getWorkoutOfTheDayCountByNickname"
       );
     }
 
@@ -359,8 +343,12 @@ export class WorkoutService {
     return count;
   }
 
-  // 사용자의 최근 운동목록 조회
-  @ErrorDecorator("WorkoutService.getRecentWorkoutRecords")
+  /**
+   * 사용자의 최근 운동목록 조회
+   * @param userSeq 사용자 번호
+   * @returns 최근 운동 기록 목록
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.getRecentWorkoutRecords")
   async getRecentWorkoutRecords(userSeq: number): Promise<WorkoutOfTheDay[]> {
     const workouts = await this.workoutRepository
       .createQueryBuilder("workout")
@@ -378,8 +366,12 @@ export class WorkoutService {
     return workouts;
   }
 
-  // 워크아웃 소프트 삭제
-  @ErrorDecorator("WorkoutService.softDeleteWorkout")
+  /**
+   * 워크아웃 소프트 삭제
+   * @param userSeq 사용자 번호
+   * @param workoutOfTheDaySeq 삭제할 운동 ID
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.softDeleteWorkout")
   async softDeleteWorkout(
     userSeq: number,
     workoutOfTheDaySeq: number
@@ -394,7 +386,7 @@ export class WorkoutService {
       throw new CustomError(
         "사용자를 찾을 수 없습니다.",
         404,
-        "WorkoutService.softDeleteWorkout"
+        "WorkoutOfTheDayService.softDeleteWorkout"
       );
     }
 
@@ -413,7 +405,7 @@ export class WorkoutService {
       throw new CustomError(
         "운동 기록을 찾을 수 없습니다.",
         404,
-        "WorkoutService.softDeleteWorkout"
+        "WorkoutOfTheDayService.softDeleteWorkout"
       );
     }
 
@@ -422,7 +414,7 @@ export class WorkoutService {
       throw new CustomError(
         "본인의 운동 기록만 삭제할 수 있습니다.",
         403,
-        "WorkoutService.softDeleteWorkout"
+        "WorkoutOfTheDayService.softDeleteWorkout"
       );
     }
 
@@ -431,8 +423,14 @@ export class WorkoutService {
     await this.workoutRepository.save(workout);
   }
 
-  // 워크아웃 수정 기능 추가
-  @ErrorDecorator("WorkoutService.updateWorkout")
+  /**
+   * 워크아웃 수정 기능
+   * @param userSeq 사용자 번호
+   * @param workoutOfTheDaySeq 수정할 운동 ID
+   * @param updateData 수정 데이터
+   * @returns 수정된 운동 기록
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.updateWorkout")
   async updateWorkout(
     userSeq: number,
     workoutOfTheDaySeq: number,
@@ -448,7 +446,7 @@ export class WorkoutService {
       throw new CustomError(
         "사용자를 찾을 수 없습니다.",
         404,
-        "WorkoutService.updateWorkout"
+        "WorkoutOfTheDayService.updateWorkout"
       );
     }
 
@@ -468,7 +466,7 @@ export class WorkoutService {
       throw new CustomError(
         "운동 기록을 찾을 수 없습니다.",
         404,
-        "WorkoutService.updateWorkout"
+        "WorkoutOfTheDayService.updateWorkout"
       );
     }
 
@@ -477,7 +475,7 @@ export class WorkoutService {
       throw new CustomError(
         "본인의 운동 기록만 수정할 수 있습니다.",
         403,
-        "WorkoutService.updateWorkout"
+        "WorkoutOfTheDayService.updateWorkout"
       );
     }
 
@@ -493,8 +491,11 @@ export class WorkoutService {
     return this.getWorkoutRecordDetail(updatedWorkout.workoutOfTheDaySeq);
   }
 
-  // 30일 이상 지난 소프트 삭제된 워크아웃 데이터 영구 삭제
-  @ErrorDecorator("WorkoutService.cleanupSoftDeletedWorkouts")
+  /**
+   * 30일 이상 지난 소프트 삭제된 워크아웃 데이터 영구 삭제
+   * @returns 삭제 결과
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.cleanupSoftDeletedWorkouts")
   async cleanupSoftDeletedWorkouts(): Promise<{
     deletedCount: number;
     deletedPhotos: number;
@@ -584,7 +585,7 @@ export class WorkoutService {
         throw new CustomError(
           "소프트 삭제된 워크아웃 정리 중 오류가 발생했습니다.",
           500,
-          "WorkoutService.cleanupSoftDeletedWorkouts"
+          "WorkoutOfTheDayService.cleanupSoftDeletedWorkouts"
         );
       } finally {
         await queryRunner.release();
@@ -602,8 +603,14 @@ export class WorkoutService {
     }
   }
 
-  // 장소 ID로 커서 기반 페이징된 운동 기록 가져오기 (날짜 기반)
-  @ErrorDecorator("WorkoutService.getWorkoutsOfTheDaysByPlaceId")
+  /**
+   * 장소 ID로 커서 기반 페이징된 운동 기록 가져오기 (날짜 기반)
+   * @param placeSeq 장소 ID
+   * @param limit 페이지 크기
+   * @param cursor 커서 값
+   * @returns 운동 기록 목록과 장소 정보
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.getWorkoutsOfTheDaysByPlaceId")
   async getWorkoutsOfTheDaysByPlaceId(
     placeSeq: number,
     limit: number = 12,
@@ -622,7 +629,7 @@ export class WorkoutService {
     limit: number;
   }> {
     console.log(
-      `[WorkoutService] 장소 ID ${placeSeq}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
+      `[WorkoutOfTheDayService] 장소 ID ${placeSeq}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
     );
 
     if (limit < 1) limit = 12;
@@ -635,7 +642,7 @@ export class WorkoutService {
       throw new CustomError(
         "해당 장소를 찾을 수 없습니다.",
         404,
-        "WorkoutService.getWorkoutsOfTheDaysByPlaceId"
+        "WorkoutOfTheDayService.getWorkoutsOfTheDaysByPlaceId"
       );
     }
 
@@ -654,7 +661,7 @@ export class WorkoutService {
         }
 
         console.log(
-          `[WorkoutService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
+          `[WorkoutOfTheDayService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
         );
       } catch (error) {
         console.error("커서 파싱 오류:", error);
@@ -695,7 +702,9 @@ export class WorkoutService {
 
     // 총 레코드 수 가져오기 (디버깅용)
     const totalCount = await query.getCount();
-    console.log(`[WorkoutService] 조건에 맞는 총 레코드 수: ${totalCount}`);
+    console.log(
+      `[WorkoutOfTheDayService] 조건에 맞는 총 레코드 수: ${totalCount}`
+    );
 
     const workouts = await query.take(limit + 1).getMany();
 
@@ -729,7 +738,7 @@ export class WorkoutService {
     );
 
     console.log(
-      `[WorkoutService] 조회 결과 - 결과 개수: ${workoutsWithCommentCount.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
+      `[WorkoutOfTheDayService] 조회 결과 - 결과 개수: ${workoutsWithCommentCount.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
     );
 
     return {
@@ -746,8 +755,13 @@ export class WorkoutService {
       limit,
     };
   }
-  //장소 ID로 운동 기록 총 개수 조회
-  @ErrorDecorator("WorkoutService.getWorkoutOfTheDayCountByPlaceId")
+
+  /**
+   * 장소 ID로 운동 기록 총 개수 조회
+   * @param placeSeq 장소 ID
+   * @returns 운동 기록 총 개수
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.getWorkoutOfTheDayCountByPlaceId")
   async getWorkoutOfTheDayCountByPlaceId(placeSeq: number): Promise<number> {
     const placeRepository = this.dataSource.getRepository(WorkoutPlace);
     const place = await placeRepository.findOne({
@@ -758,7 +772,7 @@ export class WorkoutService {
       throw new CustomError(
         "장소를 찾을 수 없습니다.",
         404,
-        "WorkoutService.getWorkoutOfTheDayCountByPlaceId"
+        "WorkoutOfTheDayService.getWorkoutOfTheDayCountByPlaceId"
       );
     }
 
@@ -770,179 +784,5 @@ export class WorkoutService {
     });
 
     return count;
-  }
-
-  /**
-   * 월별 운동 기록 날짜 조회
-   * @param nickname 사용자 닉네임
-   * @param year 조회할 년도
-   * @param month 조회할 월
-   * @returns 해당 월에 운동 기록이 있는 날짜와 해당 기록의 ID 목록, 월별 통계 정보
-   */
-  @ErrorDecorator("WorkoutService.getMonthlyWorkoutDates")
-  async getMonthlyWorkoutDates(
-    nickname: string,
-    year: number,
-    month: number
-  ): Promise<{
-    workoutData: { date: Date; workoutSeq: number }[];
-    stats: {
-      totalWorkouts: number;
-      completionRate: number;
-      currentStreak: number;
-      longestStreak: number;
-      daysInMonth: number;
-    };
-  }> {
-    console.log(
-      `[WorkoutService] 닉네임 ${nickname}의 월별 운동 기록 조회 시작 - 연도: ${year}, 월: ${month}`
-    );
-
-    // 사용자 확인
-    const user = await this.userRepository.findOne({
-      where: { userNickname: nickname },
-    });
-
-    if (!user) {
-      throw new CustomError(
-        "존재하지 않는 사용자입니다.",
-        404,
-        "WorkoutService.getMonthlyWorkoutDates"
-      );
-    }
-
-    // 해당 월의 시작일과 종료일 계산
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999); // 월의 마지막 날 23:59:59.999까지 포함
-    const daysInMonth = new Date(year, month, 0).getDate(); // 월의 총 일수
-
-    console.log(
-      `[WorkoutService] 날짜 범위: ${startDate.toISOString()} ~ ${endDate.toISOString()}`
-    );
-
-    // 해당 월에 작성된 운동 기록 조회 (날짜와 ID 포함)
-    const workouts = await this.workoutRepository.find({
-      where: {
-        user: { userSeq: user.userSeq },
-        isDeleted: 0,
-        recordDate: Between(startDate, endDate),
-      },
-      select: ["recordDate", "workoutOfTheDaySeq"],
-      order: {
-        recordDate: "ASC", // 날짜 순으로 정렬
-      },
-    });
-
-    // 날짜와 ID 매핑
-    const workoutData = workouts.map((workout) => ({
-      date: new Date(workout.recordDate), // Date 객체로 변환
-      workoutSeq: workout.workoutOfTheDaySeq,
-    }));
-
-    // 현재까지의 연속 운동 일수 계산
-    const currentStreak = this.calculateCurrentStreak(user.userSeq);
-
-    // 가장 긴 연속 운동 일수 계산
-    const longestStreak = this.calculateLongestStreak(user.userSeq);
-
-    // 응답 데이터 구성
-    const result = {
-      workoutData,
-      stats: {
-        totalWorkouts: workoutData.length,
-        completionRate: (workoutData.length / daysInMonth) * 100,
-        currentStreak: await currentStreak,
-        longestStreak: await longestStreak,
-        daysInMonth,
-      },
-    };
-
-    console.log(
-      `[WorkoutService] 월별 운동 기록 조회 완료 - 기록 수: ${workoutData.length}`
-    );
-    return result;
-  }
-
-  /**
-   * 현재까지의 연속 운동 일수 계산
-   * @param userSeq 사용자 일련번호
-   * @returns 연속 운동 일수
-   */
-  @ErrorDecorator("WorkoutService.calculateCurrentStreak")
-  private async calculateCurrentStreak(userSeq: number): Promise<number> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let streak = 0;
-    let currentDate = new Date(today);
-
-    // 오늘부터 거꾸로 체크
-    while (true) {
-      const workout = await this.workoutRepository.findOne({
-        where: {
-          user: { userSeq },
-          isDeleted: 0,
-          recordDate: Between(
-            new Date(currentDate.setHours(0, 0, 0, 0)),
-            new Date(currentDate.setHours(23, 59, 59, 999))
-          ),
-        },
-      });
-
-      if (!workout) break;
-
-      streak++;
-      currentDate.setDate(currentDate.getDate() - 1);
-    }
-
-    return streak;
-  }
-
-  /**
-   * 가장 긴 연속 운동 일수 계산
-   * @param userSeq 사용자 일련번호
-   * @returns 가장 긴 연속 운동 일수
-   */
-  @ErrorDecorator("WorkoutService.calculateLongestStreak")
-  private async calculateLongestStreak(userSeq: number): Promise<number> {
-    // 사용자의 모든 운동 날짜를 조회
-    const workouts = await this.workoutRepository.find({
-      where: {
-        user: { userSeq },
-        isDeleted: 0,
-      },
-      select: ["recordDate"],
-      order: {
-        recordDate: "ASC",
-      },
-    });
-
-    if (workouts.length === 0) return 0;
-
-    const workoutDates = workouts
-      .map((w) => {
-        const date = new Date(w.recordDate);
-        date.setHours(0, 0, 0, 0);
-        return date.getTime();
-      })
-      .sort((a, b) => a - b);
-
-    // 중복 날짜 제거
-    const uniqueDates = [...new Set(workoutDates)];
-
-    let maxStreak = 1;
-    let currentStreak = 1;
-    const oneDayMs = 24 * 60 * 60 * 1000;
-
-    for (let i = 1; i < uniqueDates.length; i++) {
-      if (uniqueDates[i] - uniqueDates[i - 1] === oneDayMs) {
-        currentStreak++;
-      } else {
-        maxStreak = Math.max(maxStreak, currentStreak);
-        currentStreak = 1;
-      }
-    }
-
-    return Math.max(maxStreak, currentStreak);
   }
 }

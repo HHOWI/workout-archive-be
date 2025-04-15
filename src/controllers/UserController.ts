@@ -5,13 +5,13 @@ import { CustomError } from "../utils/customError";
 import { LoginSchema } from "../schema/UserSchema";
 import { LoginDTO, ProfileInfoDTO } from "../dtos/UserDTO";
 import { ControllerUtil } from "../utils/controllerUtil";
-import { WorkoutService } from "../services/WorkoutService";
 import { FollowService } from "../services/FollowService";
 import { ZodError } from "zod";
+import { WorkoutOfTheDayService } from "../services/WorkoutOfTheDayService";
 
 export class UserController {
   private userService = new UserService();
-  private workoutService = new WorkoutService();
+  private workoutOfTheDayService = new WorkoutOfTheDayService();
   private followService = new FollowService();
 
   /**
@@ -248,7 +248,9 @@ export class UserController {
     // 병렬로 필요한 정보 조회
     const [imageUrl, workoutCount, followCounts] = await Promise.all([
       this.userService.getProfileImage(userNickname),
-      this.workoutService.getWorkoutOfTheDayCountByNickname(userNickname),
+      this.workoutOfTheDayService.getWorkoutOfTheDayCountByNickname(
+        userNickname
+      ),
       this.followService.getFollowCounts(userSeq),
     ]);
 

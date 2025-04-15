@@ -1,5 +1,5 @@
 import * as cron from "node-cron";
-import { WorkoutService } from "../services/WorkoutService";
+import { WorkoutOfTheDayService } from "../services/WorkoutOfTheDayService";
 import { AppDataSource } from "../data-source";
 
 /**
@@ -7,11 +7,11 @@ import { AppDataSource } from "../data-source";
  * 매주 일요일 새벽 3시에 30일이 지난 소프트 삭제된 워크아웃 데이터를 정리
  */
 export class WorkoutCleanupScheduler {
-  private workoutService: WorkoutService;
+  private workoutOfTheDayService: WorkoutOfTheDayService;
   private isRunning: boolean = false;
 
   constructor() {
-    this.workoutService = new WorkoutService();
+    this.workoutOfTheDayService = new WorkoutOfTheDayService();
   }
 
   /**
@@ -67,7 +67,8 @@ export class WorkoutCleanupScheduler {
         await AppDataSource.initialize();
       }
 
-      const result = await this.workoutService.cleanupSoftDeletedWorkouts();
+      const result =
+        await this.workoutOfTheDayService.cleanupSoftDeletedWorkouts();
 
       console.log("클린업 완료:", {
         삭제된_워크아웃_수: result.deletedCount,
