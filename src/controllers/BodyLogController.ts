@@ -15,7 +15,11 @@ import { BodyLogFilterDTO } from "../dtos/BodyLogDTO";
  * 바디로그 관련 컨트롤러
  */
 export class BodyLogController {
-  private bodyLogService = new BodyLogService();
+  private bodyLogService: BodyLogService;
+
+  constructor() {
+    this.bodyLogService = new BodyLogService();
+  }
 
   /**
    * 바디로그 저장 (인증 필요)
@@ -51,7 +55,7 @@ export class BodyLogController {
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-      // 쿼리 파라미터 변환을 위한 전처리
+      // 쿼리 파라미터 변환
       const queryParams = {
         startDate: req.query.startDate as string | undefined,
         endDate: req.query.endDate as string | undefined,
@@ -68,7 +72,7 @@ export class BodyLogController {
         "BodyLogController.getBodyLogs"
       );
 
-      // limit과 offset이 undefined인 경우 기본값 설정
+      // 필터에 기본값 적용
       const validFilter: BodyLogFilterDTO = {
         ...filter,
         limit: filter.limit ?? 10,

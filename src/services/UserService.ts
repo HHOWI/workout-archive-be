@@ -2,17 +2,32 @@ import { AppDataSource } from "../data-source";
 import { User } from "../entities/User";
 import bcrypt from "bcrypt";
 import { Repository } from "typeorm";
-import { LoginDTO, UserDTO, UserInfoDTO } from "../dtos/UserDTO";
+import {
+  LoginDTO,
+  UserDTO,
+  UserInfoDTO,
+  ProfileInfoDTO,
+} from "../dtos/UserDTO";
 import { CustomError } from "../utils/customError";
 import jwt from "jsonwebtoken";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { deleteImage } from "../utils/fileUtiles";
+import { FollowService } from "./FollowService";
+import { WorkoutOfTheDayService } from "./WorkoutOfTheDayService";
 
 export class UserService {
   private userRepo: Repository<User>;
+  private followService: FollowService;
+  private workoutOfTheDayService: WorkoutOfTheDayService;
 
-  constructor() {
+  constructor(
+    followService?: FollowService,
+    workoutOfTheDayService?: WorkoutOfTheDayService
+  ) {
     this.userRepo = AppDataSource.getRepository(User);
+    this.followService = followService || new FollowService();
+    this.workoutOfTheDayService =
+      workoutOfTheDayService || new WorkoutOfTheDayService();
   }
 
   /**
@@ -197,6 +212,9 @@ export class UserService {
     userSeq: number,
     file: Express.Multer.File
   ): Promise<string> {
+    // 이미지 파일 유효성 검사
+    this.validateImageFile(file);
+
     const user = await this.findUserBySeqOrThrow(userSeq);
 
     // 기존 이미지가 있다면 삭제
@@ -243,6 +261,74 @@ export class UserService {
   }
 
   /**
+   * 프로필 정보 조회
+   * @param userNickname 사용자 닉네임
+   * @param loggedInUserSeq 로그인한 사용자 시퀀스 (로그인 안 한 경우 null)
+   * @returns 프로필 정보 DTO
+   */
+  @ErrorDecorator("UserService.getProfileInfo")
+  async getProfileInfo(
+    userNickname: string,
+    loggedInUserSeq: number | null
+  ): Promise<ProfileInfoDTO> {
+    // 비로그인 상태일 경우 isOwner를 false로 초기화
+    let isOwner = false;
+    let isFollowing = false;
+
+    // 사용자 시퀀스 먼저 조회
+    const userSeq = await this.getUserSeqByNickname(userNickname);
+
+    if (userSeq === null) {
+      throw new CustomError(
+        "사용자를 찾을 수 없습니다.",
+        404,
+        "UserService.getProfileInfo"
+      );
+    }
+
+    // 로그인 상태이면 프로필 소유권 확인
+    if (loggedInUserSeq) {
+      // 직접 userSeq 비교로 소유권 확인 (더 명확하고 간단함)
+      isOwner = loggedInUserSeq === userSeq;
+
+      // 자신의 프로필이 아닐 경우 팔로우 상태 확인
+      if (!isOwner) {
+        isFollowing = await this.followService.checkUserFollowStatus(
+          loggedInUserSeq,
+          userSeq
+        );
+      }
+    }
+
+    // 병렬로 필요한 정보 조회
+    const [imageUrl, workoutCount, followCounts] = await Promise.all([
+      this.getProfileImage(userNickname),
+      this.workoutOfTheDayService.getWorkoutOfTheDayCountByNickname(
+        userNickname
+      ),
+      this.followService.getFollowCounts(userSeq),
+    ]);
+
+    // 팔로잉 카운트에 사용자와 장소 팔로잉 합산
+    const totalFollowingCount =
+      followCounts.followingCount + followCounts.followingPlaceCount;
+
+    // 통합 응답 반환
+    return {
+      userNickname,
+      userSeq,
+      imageUrl,
+      workoutCount,
+      isOwner,
+      isFollowing,
+      followCounts: {
+        followerCount: followCounts.followerCount,
+        followingCount: totalFollowingCount,
+      },
+    };
+  }
+
+  /**
    * 유틸리티 메서드
    */
   // 사용자 시퀀스로 사용자 찾기 (없으면 예외 발생)
@@ -256,5 +342,38 @@ export class UserService {
       );
     }
     return user;
+  }
+
+  /**
+   * 이미지 파일 유효성 검사
+   * @param file 확인할 이미지 파일
+   * @throws 파일이 유효하지 않을 경우 CustomError
+   */
+  @ErrorDecorator("UserService.validateImageFile")
+  validateImageFile(file: Express.Multer.File): void {
+    // 파일 유효성 검사
+    const allowedMimeTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new CustomError(
+        "허용되지 않는 파일 형식입니다. JPEG, PNG, GIF, WEBP 형식만 허용됩니다.",
+        400,
+        "UserService.validateImageFile"
+      );
+    }
+
+    // 파일 크기 제한 확인 (5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      throw new CustomError(
+        "파일 크기는 5MB 이하여야 합니다.",
+        400,
+        "UserService.validateImageFile"
+      );
+    }
   }
 }

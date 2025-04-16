@@ -14,8 +14,13 @@ import {
 } from "../schema/CommentSchema";
 
 export class CommentController {
-  private commentService = new CommentService();
-  private commentLikeService = new CommentLikeService();
+  private commentService: CommentService;
+  private commentLikeService: CommentLikeService;
+
+  constructor() {
+    this.commentService = new CommentService();
+    this.commentLikeService = new CommentLikeService();
+  }
 
   /**
    * 공통 에러 처리 헬퍼 메서드
@@ -76,7 +81,6 @@ export class CommentController {
       const { page, limit } = queryResult.data;
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
-      // 인증 여부와 상관없이 항상 getCommentsWithLikes 호출 (userSeq가 undefined일 수 있음)
       const comments = await this.commentService.getCommentsWithLikes(
         workoutOfTheDaySeq,
         userSeq,

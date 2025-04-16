@@ -4,15 +4,17 @@ import { AppDataSource } from "../data-source";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
 import { RegisterDTO } from "../dtos/UserDTO";
-import nodemailer from "nodemailer";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
+import { EmailService } from "./EmailService";
 
 export class RegisterService {
   private userRepo: Repository<User>;
+  private emailService: EmailService;
 
   constructor() {
     this.userRepo = AppDataSource.getRepository(User);
+    this.emailService = new EmailService();
   }
 
   /**
@@ -40,11 +42,49 @@ export class RegisterService {
   }
 
   /**
+   * 회원가입 시 중복 체크 로직 통합
+   */
+  @ErrorDecorator("RegisterService.checkDuplication")
+  private async checkDuplication(data: RegisterDTO): Promise<void> {
+    const existingUserId = await this.isUserIdDuplicated(data.userId);
+    if (existingUserId) {
+      throw new CustomError(
+        "이미 사용 중인 아이디입니다.",
+        409,
+        "RegisterService.registerUser"
+      );
+    }
+
+    const existingUserNickname = await this.isUserNicknameDuplicated(
+      data.userNickname
+    );
+    if (existingUserNickname) {
+      throw new CustomError(
+        "이미 사용 중인 닉네임입니다.",
+        409,
+        "RegisterService.registerUser"
+      );
+    }
+
+    const existingUserEmail = await this.isUserEmailDuplicated(data.userEmail);
+    if (existingUserEmail) {
+      throw new CustomError(
+        "이미 사용 중인 이메일입니다.",
+        409,
+        "RegisterService.registerUser"
+      );
+    }
+  }
+
+  /**
    * 회원가입 관련 메서드
    */
   // 회원가입 처리
   @ErrorDecorator("RegisterService.registerUser")
   async registerUser(data: RegisterDTO): Promise<User> {
+    // 중복 체크 수행
+    await this.checkDuplication(data);
+
     // 비밀번호 해싱
     const hashedPassword = await this.hashPassword(data.userPw);
 
@@ -55,8 +95,11 @@ export class RegisterService {
     const user = this.createUserEntity(data, hashedPassword, verificationToken);
     await this.userRepo.save(user);
 
-    // 인증 메일 발송
-    await this.sendVerificationEmail(data.userEmail, verificationToken);
+    // 인증 메일 발송 - EmailService 사용
+    await this.emailService.sendVerificationEmail(
+      data.userEmail,
+      verificationToken
+    );
 
     return user;
   }
@@ -88,51 +131,6 @@ export class RegisterService {
       verificationToken: verificationToken,
       isVerified: 0,
     });
-  }
-
-  /**
-   * 이메일 인증 관련 메서드
-   */
-  // 이메일 인증 메일 발송
-  @ErrorDecorator("RegisterService.sendVerificationEmail")
-  private async sendVerificationEmail(
-    to: string,
-    token: string
-  ): Promise<void> {
-    const transporter = this.createMailTransporter();
-    const verificationUrl = this.generateVerificationUrl(token);
-    const mailOptions = this.createMailOptions(to, verificationUrl);
-
-    await transporter.sendMail(mailOptions);
-  }
-
-  // 메일 전송자 생성
-  private createMailTransporter(): nodemailer.Transporter {
-    return nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-  }
-
-  // 인증 URL 생성
-  private generateVerificationUrl(token: string): string {
-    return `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-  }
-
-  // 메일 옵션 생성
-  private createMailOptions(
-    to: string,
-    verificationUrl: string
-  ): nodemailer.SendMailOptions {
-    return {
-      from: "Workout Archive",
-      to,
-      subject: "이메일 인증",
-      html: `<p>이메일 인증을 완료하려면 <a href="${verificationUrl}">여기</a>를 클릭하세요.</p>`,
-    };
   }
 
   // 이메일 인증 처리

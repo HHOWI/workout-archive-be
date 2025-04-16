@@ -75,14 +75,14 @@ workoutRouter.get(
 workoutRouter.post(
   "/workout-records/:workoutOfTheDaySeq/like",
   authenticateToken,
-  (req, res) => workoutLikeController.toggleWorkoutLike(req, res)
+  workoutLikeController.toggleWorkoutLike
 );
 
 // 워크아웃 좋아요 상태 조회 API (선택적 인증)
 workoutRouter.get(
   "/workout-records/:workoutOfTheDaySeq/like",
   optionalAuthenticateToken,
-  (req, res) => workoutLikeController.getWorkoutLikeStatus(req, res)
+  workoutLikeController.getWorkoutLikeStatus
 );
 
 // 특정 운동 기록 좋아요 수 조회 API

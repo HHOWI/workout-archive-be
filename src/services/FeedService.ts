@@ -17,8 +17,6 @@ import { PaginationUtil } from "../utils/paginationUtil";
  */
 export class FeedService {
   private workoutRepository: Repository<WorkoutOfTheDay>;
-  private userRepository: Repository<User>;
-  private workoutPlaceRepository: Repository<WorkoutPlace>;
   private userFollowRepository: Repository<UserFollow>;
   private placeFollowRepository: Repository<PlaceFollow>;
   private commentService: CommentService;
@@ -26,8 +24,6 @@ export class FeedService {
 
   constructor() {
     this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
-    this.userRepository = AppDataSource.getRepository(User);
-    this.workoutPlaceRepository = AppDataSource.getRepository(WorkoutPlace);
     this.userFollowRepository = AppDataSource.getRepository(UserFollow);
     this.placeFollowRepository = AppDataSource.getRepository(PlaceFollow);
     this.commentService = new CommentService();
@@ -52,6 +48,68 @@ export class FeedService {
     limit = PaginationUtil.validateLimit(limit);
     cursor = PaginationUtil.validateCursor(cursor);
 
+    // 팔로우 정보 조회
+    const { followingUserSeqs, followingPlaceSeqs } = await this.getFollowInfo(
+      userSeq
+    );
+
+    // 팔로우 대상이 없으면 빈 피드 반환
+    if (followingUserSeqs.length === 0 && followingPlaceSeqs.length === 0) {
+      return this.createEmptyFeedResponse();
+    }
+
+    // 피드 데이터 조회
+    const { currentWorkouts, hasNextPage } = await this.fetchFeedWorkouts(
+      userSeq,
+      followingUserSeqs,
+      followingPlaceSeqs,
+      limit,
+      cursor
+    );
+
+    // 워크아웃 ID 목록 추출
+    const workoutSeqs = currentWorkouts.map((w) => w.workoutOfTheDaySeq);
+
+    // 결과가 없으면 빈 응답 반환
+    if (workoutSeqs.length === 0) {
+      return this.createEmptyFeedResponse();
+    }
+
+    // 관련 데이터 조회 (좋아요, 댓글 수)
+    const { likeStatusMap, commentCountMap } = await this.fetchRelatedData(
+      userSeq,
+      workoutSeqs
+    );
+
+    // 피드 아이템 매핑
+    const feedItems = this.mapWorkoutsToFeedItems(
+      currentWorkouts,
+      commentCountMap,
+      likeStatusMap,
+      followingUserSeqs,
+      followingPlaceSeqs
+    );
+
+    // 다음 페이지 커서 결정
+    const nextCursor = this.determineNextCursor(hasNextPage, currentWorkouts);
+
+    // 최종 응답 생성
+    return {
+      feeds: feedItems,
+      nextCursor: nextCursor,
+    };
+  }
+
+  /**
+   * 팔로우 정보를 조회합니다.
+   * @param userSeq 사용자 시퀀스 번호
+   * @returns 팔로우하는 사용자와 장소 시퀀스 목록
+   */
+  @ErrorDecorator("FeedService.getFollowInfo")
+  private async getFollowInfo(userSeq: number): Promise<{
+    followingUserSeqs: number[];
+    followingPlaceSeqs: number[];
+  }> {
     // 팔로우한 유저 목록 가져오기
     const followingUsers = await this.userFollowRepository.find({
       where: { follower: { userSeq } },
@@ -72,12 +130,61 @@ export class FeedService {
       (follow) => follow.workoutPlace.workoutPlaceSeq
     );
 
-    // 사용자가 팔로우하는 유저나 장소가 없는 경우 빈 피드 반환
-    if (followingUserSeqs.length === 0 && followingPlaceSeqs.length === 0) {
-      return { feeds: [], nextCursor: null };
-    }
+    return { followingUserSeqs, followingPlaceSeqs };
+  }
 
+  /**
+   * 피드용 워크아웃 데이터를 조회합니다.
+   * @param userSeq 사용자 시퀀스 번호
+   * @param followingUserSeqs 팔로우하는 사용자 시퀀스 목록
+   * @param followingPlaceSeqs 팔로우하는 장소 시퀀스 목록
+   * @param limit 한 번에 가져올 항목 수
+   * @param cursor 페이지네이션 커서
+   * @returns 워크아웃 데이터와 다음 페이지 존재 여부
+   */
+  @ErrorDecorator("FeedService.fetchFeedWorkouts")
+  private async fetchFeedWorkouts(
+    userSeq: number,
+    followingUserSeqs: number[],
+    followingPlaceSeqs: number[],
+    limit: number,
+    cursor: number | null
+  ): Promise<{
+    currentWorkouts: WorkoutOfTheDay[];
+    hasNextPage: boolean;
+  }> {
     // 피드 쿼리 구성
+    const query = this.buildFeedQuery(
+      userSeq,
+      followingUserSeqs,
+      followingPlaceSeqs,
+      cursor
+    );
+
+    // 결과 가져오기 (다음 페이지 확인을 위해 limit + 1개 조회)
+    const workouts = await query.take(limit + 1).getMany();
+
+    // 현재 페이지 항목과 다음 페이지 존재 여부 계산
+    const hasNextPage = workouts.length > limit;
+    const currentWorkouts = workouts.slice(0, limit);
+
+    return { currentWorkouts, hasNextPage };
+  }
+
+  /**
+   * 피드 쿼리를 구성합니다.
+   * @param userSeq 사용자 시퀀스 번호
+   * @param followingUserSeqs 팔로우하는 사용자 시퀀스 목록
+   * @param followingPlaceSeqs 팔로우하는 장소 시퀀스 목록
+   * @param cursor 페이지네이션 커서
+   * @returns 구성된 TypeORM 쿼리 빌더
+   */
+  private buildFeedQuery(
+    userSeq: number,
+    followingUserSeqs: number[],
+    followingPlaceSeqs: number[],
+    cursor: number | null
+  ) {
     const query = this.workoutRepository
       .createQueryBuilder("workout")
       .select([
@@ -124,30 +231,29 @@ export class FeedService {
       });
     }
 
-    // 결과 가져오기 (중복 제거는 TypeORM에서 자동으로 처리)
-    const workouts = await query.take(limit + 1).getMany(); // 다음 페이지 확인 위해 +1
+    return query;
+  }
 
-    // 현재 페이지 항목 (다음 페이지 판별을 위해 1개 더 가져옴)
-    const hasNextPage = workouts.length > limit;
-    const currentWorkouts = workouts.slice(0, limit);
-
-    // 워크아웃 ID 목록 추출
-    const workoutSeqs = currentWorkouts.map((w) => w.workoutOfTheDaySeq);
-
-    // 결과가 없으면 빈 응답 반환
-    if (workoutSeqs.length === 0) {
-      return { feeds: [], nextCursor: null };
-    }
-
-    // 좋아요 상태 및 댓글 수 일괄 조회
-    let likeStatusMap: Record<number, boolean> = {};
-    let commentCountMap: Record<number, number> = {};
-
+  /**
+   * 피드 관련 데이터(좋아요 상태, 댓글 수)를 조회합니다.
+   * @param userSeq 사용자 시퀀스 번호
+   * @param workoutSeqs 워크아웃 시퀀스 목록
+   * @returns 좋아요 상태와 댓글 수 매핑
+   */
+  @ErrorDecorator("FeedService.fetchRelatedData")
+  private async fetchRelatedData(
+    userSeq: number,
+    workoutSeqs: number[]
+  ): Promise<{
+    likeStatusMap: Record<number, boolean>;
+    commentCountMap: Record<number, number>;
+  }> {
     // 좋아요 상태 조회
-    likeStatusMap = await this.workoutLikeService.getBulkWorkoutLikeStatus(
-      userSeq,
-      workoutSeqs
-    );
+    const likeStatusMap =
+      await this.workoutLikeService.getBulkWorkoutLikeStatus(
+        userSeq,
+        workoutSeqs
+      );
 
     // 댓글 수 조회
     const commentCounts = await Promise.all(
@@ -157,13 +263,31 @@ export class FeedService {
       }))
     );
 
-    commentCountMap = commentCounts.reduce((acc, { seq, count }) => {
+    const commentCountMap = commentCounts.reduce((acc, { seq, count }) => {
       acc[seq] = count;
       return acc;
     }, {} as Record<number, number>);
 
-    // 응답 DTO 매핑
-    const feedItems: FeedItemDTO[] = currentWorkouts.map((workout) => {
+    return { likeStatusMap, commentCountMap };
+  }
+
+  /**
+   * 워크아웃 엔티티를 피드 아이템 DTO로 매핑합니다.
+   * @param workouts 워크아웃 엔티티 목록
+   * @param commentCountMap 댓글 수 매핑
+   * @param likeStatusMap 좋아요 상태 매핑
+   * @param followingUserSeqs 팔로우하는 사용자 시퀀스 목록
+   * @param followingPlaceSeqs 팔로우하는 장소 시퀀스 목록
+   * @returns 피드 아이템 DTO 목록
+   */
+  private mapWorkoutsToFeedItems(
+    workouts: WorkoutOfTheDay[],
+    commentCountMap: Record<number, number>,
+    likeStatusMap: Record<number, boolean>,
+    followingUserSeqs: number[],
+    followingPlaceSeqs: number[]
+  ): FeedItemDTO[] {
+    return workouts.map((workout) => {
       // 피드 소스 결정 (사용자 또는 장소)
       const source = FeedMapper.determineFeedSource(
         workout,
@@ -179,18 +303,28 @@ export class FeedService {
         source
       );
     });
+  }
 
-    // 다음 페이지 커서 결정
-    const nextCursor =
-      hasNextPage && currentWorkouts.length > 0
-        ? currentWorkouts[currentWorkouts.length - 1].workoutOfTheDaySeq
-        : null;
+  /**
+   * 다음 페이지 커서를 결정합니다.
+   * @param hasNextPage 다음 페이지 존재 여부
+   * @param currentWorkouts 현재 페이지 워크아웃 목록
+   * @returns 다음 페이지 커서 또는 null
+   */
+  private determineNextCursor(
+    hasNextPage: boolean,
+    currentWorkouts: WorkoutOfTheDay[]
+  ): number | null {
+    return hasNextPage && currentWorkouts.length > 0
+      ? currentWorkouts[currentWorkouts.length - 1].workoutOfTheDaySeq
+      : null;
+  }
 
-    // 최종 응답 생성
-    const response = new FeedResponseDTO();
-    response.feeds = feedItems;
-    response.nextCursor = nextCursor;
-
-    return response;
+  /**
+   * 빈 피드 응답을 생성합니다.
+   * @returns 빈 피드 응답 DTO
+   */
+  private createEmptyFeedResponse(): FeedResponseDTO {
+    return { feeds: [], nextCursor: null };
   }
 }

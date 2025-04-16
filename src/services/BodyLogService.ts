@@ -24,29 +24,35 @@ export class BodyLogService {
   }
 
   /**
-   * 바디로그를 저장합니다.
+   * 사용자 존재 여부 확인
    * @param userSeq 사용자 시퀀스
-   * @param bodyLogDTO 저장할 바디로그 데이터
-   * @returns 저장된 바디로그 시퀀스
+   * @returns 사용자 엔티티
+   * @throws 사용자를 찾을 수 없을 경우 에러
    */
-  @ErrorDecorator("BodyLogService.saveBodyLog")
-  public async saveBodyLog(
-    userSeq: number,
-    bodyLogDTO: SaveBodyLogDTO
-  ): Promise<{ bodyLogSeq: number }> {
-    // 사용자 존재 확인
+  @ErrorDecorator("BodyLogService.validateUser")
+  private async validateUser(userSeq: number): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { userSeq },
     });
+
     if (!user) {
       throw new CustomError(
         "사용자를 찾을 수 없습니다.",
         404,
-        "BodyLogService.saveBodyLog"
+        "BodyLogService.validateUser"
       );
     }
 
-    // 바디로그 저장
+    return user;
+  }
+
+  /**
+   * 바디로그 엔티티 생성
+   * @param user 사용자 엔티티
+   * @param bodyLogDTO 바디로그 데이터
+   * @returns 생성된 바디로그 엔티티
+   */
+  private createBodyLogEntity(user: User, bodyLogDTO: SaveBodyLogDTO): BodyLog {
     const bodyLog = new BodyLog();
     bodyLog.user = user;
     bodyLog.height = bodyLogDTO.height ?? null;
@@ -59,6 +65,27 @@ export class BodyLogService {
       bodyLog.recordDate = new Date(bodyLogDTO.recordDate);
     }
 
+    return bodyLog;
+  }
+
+  /**
+   * 바디로그를 저장합니다.
+   * @param userSeq 사용자 시퀀스
+   * @param bodyLogDTO 저장할 바디로그 데이터
+   * @returns 저장된 바디로그 시퀀스
+   */
+  @ErrorDecorator("BodyLogService.saveBodyLog")
+  public async saveBodyLog(
+    userSeq: number,
+    bodyLogDTO: SaveBodyLogDTO
+  ): Promise<{ bodyLogSeq: number }> {
+    // 사용자 존재 확인
+    const user = await this.validateUser(userSeq);
+
+    // 바디로그 엔티티 생성
+    const bodyLog = this.createBodyLogEntity(user, bodyLogDTO);
+
+    // 바디로그 저장
     const savedBodyLog = await this.bodyLogRepository.save(bodyLog);
 
     return {
@@ -67,16 +94,12 @@ export class BodyLogService {
   }
 
   /**
-   * 바디로그 목록을 조회합니다.
+   * 바디로그 목록 조회를 위한 쿼리 생성
    * @param userSeq 사용자 시퀀스
    * @param filter 필터 옵션
-   * @returns 바디로그 목록
+   * @returns 생성된 쿼리 빌더
    */
-  @ErrorDecorator("BodyLogService.getBodyLogs")
-  public async getBodyLogs(
-    userSeq: number,
-    filter: BodyLogFilterDTO
-  ): Promise<BodyLog[]> {
+  private createBodyLogQuery(userSeq: number, filter: BodyLogFilterDTO) {
     const query = this.bodyLogRepository
       .createQueryBuilder("bodyLog")
       .leftJoinAndSelect("bodyLog.user", "user")
@@ -85,6 +108,16 @@ export class BodyLogService {
       .take(filter.limit)
       .skip(filter.offset);
 
+    return query;
+  }
+
+  /**
+   * 날짜 필터 적용
+   * @param query 쿼리 빌더
+   * @param filter 필터 옵션
+   * @returns 필터가 적용된 쿼리 빌더
+   */
+  private applyDateFilters(query: any, filter: BodyLogFilterDTO) {
     // yearMonth 필터가 있으면 해당 월의 데이터만 필터링
     if (filter.yearMonth) {
       const [year, month] = filter.yearMonth.split("-").map(Number);
@@ -112,6 +145,27 @@ export class BodyLogService {
       }
     }
 
+    return query;
+  }
+
+  /**
+   * 바디로그 목록을 조회합니다.
+   * @param userSeq 사용자 시퀀스
+   * @param filter 필터 옵션
+   * @returns 바디로그 목록
+   */
+  @ErrorDecorator("BodyLogService.getBodyLogs")
+  public async getBodyLogs(
+    userSeq: number,
+    filter: BodyLogFilterDTO
+  ): Promise<BodyLog[]> {
+    // 기본 쿼리 생성
+    let query = this.createBodyLogQuery(userSeq, filter);
+
+    // 날짜 필터 적용
+    query = this.applyDateFilters(query, filter);
+
+    // 바디로그 조회
     const bodyLogs = await query.getMany();
     return bodyLogs;
   }
@@ -135,16 +189,17 @@ export class BodyLogService {
   }
 
   /**
-   * 바디로그를 삭제합니다.
+   * 바디로그 존재 여부 및 사용자 소유권 확인
    * @param userSeq 사용자 시퀀스
-   * @param bodyLogSeq 삭제할 바디로그 시퀀스
+   * @param bodyLogSeq 바디로그 시퀀스
+   * @returns 확인된 바디로그 엔티티
+   * @throws 바디로그를 찾을 수 없거나 권한이 없는 경우 에러
    */
-  @ErrorDecorator("BodyLogService.deleteBodyLog")
-  public async deleteBodyLog(
+  @ErrorDecorator("BodyLogService.validateBodyLogOwnership")
+  private async validateBodyLogOwnership(
     userSeq: number,
     bodyLogSeq: number
-  ): Promise<void> {
-    // 바디로그가 사용자의 것인지 확인
+  ): Promise<BodyLog> {
     const bodyLog = await this.bodyLogRepository.findOne({
       where: { bodyLogSeq },
       relations: ["user"],
@@ -154,7 +209,7 @@ export class BodyLogService {
       throw new CustomError(
         "바디로그를 찾을 수 없습니다.",
         404,
-        "BodyLogService.deleteBodyLog"
+        "BodyLogService.validateBodyLogOwnership"
       );
     }
 
@@ -162,9 +217,25 @@ export class BodyLogService {
       throw new CustomError(
         "다른 사용자의 바디로그를 삭제할 수 없습니다.",
         403,
-        "BodyLogService.deleteBodyLog"
+        "BodyLogService.validateBodyLogOwnership"
       );
     }
+
+    return bodyLog;
+  }
+
+  /**
+   * 바디로그를 삭제합니다.
+   * @param userSeq 사용자 시퀀스
+   * @param bodyLogSeq 삭제할 바디로그 시퀀스
+   */
+  @ErrorDecorator("BodyLogService.deleteBodyLog")
+  public async deleteBodyLog(
+    userSeq: number,
+    bodyLogSeq: number
+  ): Promise<void> {
+    // 바디로그 소유권 확인
+    const bodyLog = await this.validateBodyLogOwnership(userSeq, bodyLogSeq);
 
     // 바디로그 삭제
     await this.bodyLogRepository.remove(bodyLog);

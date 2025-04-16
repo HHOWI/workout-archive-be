@@ -80,45 +80,84 @@ export class DateUtil {
   }
 
   /**
-   * 주어진 데이터가 주기에 비해 추정치인지 확인
+   * 주어진 날짜 배열이 특정 간격에 맞게 분포되어 있는지 확인합니다.
+   * 간격과 맞지 않을 경우 데이터가 추정되었다고 판단
    * @param dates 날짜 배열
-   * @param intervalMilliseconds 주기의 밀리초
-   * @returns 추정치 여부
+   * @param intervalMilliseconds 간격(밀리초)
+   * @returns 추정 여부
    */
   static isDataEstimated(dates: Date[], intervalMilliseconds: number): boolean {
-    // 데이터가 1개만 있으면 추정치가 아님
+    // 날짜가 없거나 하나만 있는 경우 추정이 아님
     if (dates.length <= 1) return false;
 
-    // 데이터 간격이 설정된 주기와 맞지 않으면 추정치로 간주
+    // 날짜 정렬
     const sortedDates = [...dates].sort((a, b) => a.getTime() - b.getTime());
 
-    // 첫 날짜와 마지막 날짜 간격이 설정 주기보다 크면 추정치
+    // 첫 날짜와 마지막 날짜 사이의 시간 간격
     const firstDate = sortedDates[0];
     const lastDate = sortedDates[sortedDates.length - 1];
+    const timespan = lastDate.getTime() - firstDate.getTime();
 
-    // 주기의 80% 이상 차이나면 추정치로 간주
-    const threshold = intervalMilliseconds * 0.8;
-    return lastDate.getTime() - firstDate.getTime() > threshold;
+    // 시간 간격이 설정된 간격의 절반 이하면 추정 아님
+    if (timespan <= intervalMilliseconds / 2) {
+      return false;
+    }
+
+    // 각 날짜 간격이 주기 간격에 비해 불규칙한지 확인
+    let prevDate = firstDate;
+    for (let i = 1; i < sortedDates.length; i++) {
+      const currentDate = sortedDates[i];
+      const gap = currentDate.getTime() - prevDate.getTime();
+
+      // 날짜 간격이 주어진 간격의 1/4보다 크면 불규칙하다고 간주
+      if (gap > intervalMilliseconds / 4) {
+        return true;
+      }
+      prevDate = currentDate;
+    }
+
+    return false;
   }
 
   /**
-   * 타임스탬프 배열이 주어진 주기보다 넓은 간격을 가지는지 확인
+   * 타임스탬프 배열이 특정 간격에 맞게 분포되어 있는지 확인합니다.
    * @param timestamps 타임스탬프 배열
-   * @param intervalMilliseconds 주기의 밀리초
-   * @returns 넓은 간격 여부
+   * @param intervalMilliseconds 간격(밀리초)
+   * @returns 추정 여부
    */
   static isTimespanEstimated(
     timestamps: number[],
     intervalMilliseconds: number
   ): boolean {
+    // 타임스탬프가 없거나 하나만 있는 경우 추정이 아님
     if (timestamps.length <= 1) return false;
 
+    // 타임스탬프 정렬
     const sortedTimestamps = [...timestamps].sort((a, b) => a - b);
+
+    // 첫 타임스탬프와 마지막 타임스탬프 사이의 시간 간격
     const firstTimestamp = sortedTimestamps[0];
     const lastTimestamp = sortedTimestamps[sortedTimestamps.length - 1];
+    const timespan = lastTimestamp - firstTimestamp;
 
-    // 타임스탬프 간격이 설정 주기의 80% 이상인 경우 추정치로 간주
-    const threshold = intervalMilliseconds * 0.8;
-    return lastTimestamp - firstTimestamp > threshold;
+    // 시간 간격이 설정된 간격의 절반 이하면 추정 아님
+    if (timespan <= intervalMilliseconds / 2) {
+      return false;
+    }
+
+    // 타임스탬프 간격이 주어진 간격에 비해 불규칙한지 확인
+    let prevTimestamp = firstTimestamp;
+    for (let i = 1; i < sortedTimestamps.length; i++) {
+      const currentTimestamp = sortedTimestamps[i];
+      const gap = currentTimestamp - prevTimestamp;
+
+      // 간격이 주어진 간격의 1/4보다 크면 불규칙하다고 간주
+      if (gap > intervalMilliseconds / 4) {
+        return true;
+      }
+      prevTimestamp = currentTimestamp;
+    }
+
+    return false;
   }
 }

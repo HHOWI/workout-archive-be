@@ -129,4 +129,30 @@ export class ValidationUtil {
 
     return result.data;
   }
+
+  /**
+   * URL 경로의 특정 파라미터를 Zod 스키마로 검증하고 처리된 데이터 반환
+   * @param req Express 요청 객체
+   * @param paramName 파라미터 이름 (예: "userSeq", "followingUserSeq")
+   * @param schema Zod 스키마
+   * @param errorMessage 실패 시 에러 메시지
+   * @param location 에러 발생 위치
+   * @returns 검증 및 변환된 데이터
+   */
+  static validatePathParam<T>(
+    req: Request,
+    paramName: string,
+    schema: ZodSchema<T>,
+    errorMessage: string = "파라미터 유효성 검사 실패",
+    location: string = "ValidationUtil.validatePathParam"
+  ): T {
+    const paramValue = req.params[paramName];
+    const result = schema.safeParse(paramValue);
+
+    if (!result.success) {
+      throw new CustomError(errorMessage, 400, location);
+    }
+
+    return result.data;
+  }
 }

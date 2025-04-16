@@ -15,6 +15,8 @@ import { CustomError } from "../utils/customError";
 import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
 import { CommentService } from "./CommentService";
 import { WorkoutDetailService } from "./WorkoutDetailService";
+import { WorkoutLikeService } from "./WorkoutLikeService";
+import { ExerciseService } from "./ExerciseService";
 import { deleteImage } from "../utils/fileUtiles";
 
 /**
@@ -27,14 +29,27 @@ export class WorkoutOfTheDayService {
   private dataSource: DataSource;
   private commentService: CommentService;
   private workoutDetailService: WorkoutDetailService;
+  private workoutLikeService: WorkoutLikeService;
 
-  constructor() {
+  /**
+   * 의존성 주입 패턴을 통한 생성자
+   */
+  constructor(
+    commentService?: CommentService,
+    workoutDetailService?: WorkoutDetailService,
+    workoutLikeService?: WorkoutLikeService,
+    exerciseService?: ExerciseService
+  ) {
     this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
     this.workoutPlaceRepository = AppDataSource.getRepository(WorkoutPlace);
     this.userRepository = AppDataSource.getRepository(User);
     this.dataSource = AppDataSource;
-    this.commentService = new CommentService();
-    this.workoutDetailService = new WorkoutDetailService();
+    this.commentService = commentService || new CommentService();
+    // ExerciseService를 주입하여 WorkoutDetailService 생성
+    const exerciseSvc = exerciseService || new ExerciseService();
+    this.workoutDetailService =
+      workoutDetailService || new WorkoutDetailService(exerciseSvc);
+    this.workoutLikeService = workoutLikeService || new WorkoutLikeService();
   }
 
   /**
@@ -311,6 +326,36 @@ export class WorkoutOfTheDayService {
     }
 
     return workout;
+  }
+
+  /**
+   * 특정 운동 기록 상세 조회 (좋아요 정보 포함)
+   * @param workoutOfTheDaySeq 조회할 운동 ID
+   * @param userSeq 사용자 번호 (선택적)
+   * @returns 좋아요 정보가 포함된 운동 기록 상세 정보
+   */
+  @ErrorDecorator("WorkoutOfTheDayService.getWorkoutRecordDetailWithLikeStatus")
+  async getWorkoutRecordDetailWithLikeStatus(
+    workoutOfTheDaySeq: number,
+    userSeq?: number
+  ): Promise<WorkoutOfTheDay & { isLiked: boolean }> {
+    // 운동 상세 정보 조회
+    const workout = await this.getWorkoutRecordDetail(workoutOfTheDaySeq);
+
+    // 좋아요 상태 조회 (로그인한 사용자인 경우에만)
+    let isLiked = false;
+    if (userSeq) {
+      isLiked = await this.workoutLikeService.getWorkoutLikeStatus(
+        userSeq,
+        workoutOfTheDaySeq
+      );
+    }
+
+    // 좋아요 정보를 포함한 결과 반환
+    return {
+      ...workout,
+      isLiked,
+    };
   }
 
   /**

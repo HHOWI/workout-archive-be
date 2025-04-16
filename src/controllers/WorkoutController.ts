@@ -10,7 +10,6 @@ import {
 import { UserNicknameSchema } from "../schema/UserSchema";
 import { SeqSchema } from "../schema/BaseSchema";
 import { ControllerUtil } from "../utils/controllerUtil";
-import { WorkoutLikeService } from "../services/WorkoutLikeService";
 import { ZodError } from "zod";
 import {
   SaveWorkoutDTO,
@@ -20,11 +19,43 @@ import {
 } from "../dtos/WorkoutDTO";
 import { WorkoutOfTheDayService } from "../services/WorkoutOfTheDayService";
 import { WorkoutCalendarService } from "../services/WorkoutCalendarService";
+import { CommentService } from "../services/CommentService";
+import { WorkoutDetailService } from "../services/WorkoutDetailService";
+import { WorkoutLikeService } from "../services/WorkoutLikeService";
+import { ExerciseService } from "../services/ExerciseService";
+import { UserService } from "../services/UserService";
 
 export class WorkoutController {
-  private workoutOfTheDayService = new WorkoutOfTheDayService();
-  private workoutCalendarService = new WorkoutCalendarService();
-  private workoutLikeService = new WorkoutLikeService();
+  private workoutOfTheDayService: WorkoutOfTheDayService;
+  private workoutCalendarService: WorkoutCalendarService;
+
+  /**
+   * 의존성 주입을 통한 생성자
+   * @param workoutOfTheDayService WorkoutOfTheDayService 인스턴스
+   * @param workoutCalendarService WorkoutCalendarService 인스턴스
+   */
+  constructor(
+    workoutOfTheDayService?: WorkoutOfTheDayService,
+    workoutCalendarService?: WorkoutCalendarService
+  ) {
+    // 서비스 생성 시 의존성 주입 체인 구성
+    const exerciseService = new ExerciseService();
+    const commentService = new CommentService();
+    const workoutDetailService = new WorkoutDetailService(exerciseService);
+    const workoutLikeService = new WorkoutLikeService();
+    const userService = new UserService();
+
+    this.workoutOfTheDayService =
+      workoutOfTheDayService ||
+      new WorkoutOfTheDayService(
+        commentService,
+        workoutDetailService,
+        workoutLikeService,
+        exerciseService
+      );
+    this.workoutCalendarService =
+      workoutCalendarService || new WorkoutCalendarService(userService);
+  }
 
   /**
    * 공통 에러 처리 헬퍼 메서드
@@ -150,27 +181,12 @@ export class WorkoutController {
         // 로그인한 사용자 정보 (선택적)
         const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
-        // 운동 기록 가져오기
-        const workout =
-          await this.workoutOfTheDayService.getWorkoutRecordDetail(
-            workoutOfTheDaySeq
+        // 운동 기록을 좋아요 상태와 함께 조회
+        const workoutWithLikeInfo =
+          await this.workoutOfTheDayService.getWorkoutRecordDetailWithLikeStatus(
+            workoutOfTheDaySeq,
+            userSeq
           );
-
-        // 좋아요 정보 추가
-        let isLiked = false;
-        if (userSeq) {
-          // 현재 사용자의 좋아요 상태를 확인
-          isLiked = await this.workoutLikeService.getWorkoutLikeStatus(
-            userSeq,
-            workoutOfTheDaySeq
-          );
-        }
-
-        // 워크아웃 객체에 좋아요 정보를 추가
-        const workoutWithLikeInfo = {
-          ...workout,
-          isLiked,
-        };
 
         res.status(200).json(workoutWithLikeInfo);
       } catch (error) {
@@ -330,9 +346,6 @@ export class WorkoutController {
 
         const { limit, cursor }: DateCursorPaginationDTO =
           paginationResult.data;
-
-        // 로그인한 사용자 정보 (선택적)
-        const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
         // 장소 ID로 운동 기록 조회
         const result =

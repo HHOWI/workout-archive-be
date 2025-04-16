@@ -34,17 +34,25 @@ const BodyPartSchema = z.enum([
  * 바디로그 통계 필터 스키마
  */
 export const BodyLogStatsFilterSchema = z.object({
-  period: PeriodSchema.default("1year"),
-  interval: IntervalSchema.default("1week"),
+  period: z
+    .enum(["1months", "3months", "6months", "1year", "2years", "all"])
+    .default("1year"),
+  interval: z
+    .enum(["1week", "2weeks", "4weeks", "3months", "all"])
+    .default("1week"),
 });
 
 /**
  * 운동 무게 통계 필터 스키마
  */
 export const ExerciseWeightStatsFilterSchema = z.object({
-  period: PeriodSchema.default("3months"),
-  interval: IntervalSchema.default("all"),
-  rm: RMSchema.default("over8RM"),
+  period: z
+    .enum(["1months", "3months", "6months", "1year", "2years", "all"])
+    .default("3months"),
+  interval: z
+    .enum(["1week", "2weeks", "4weeks", "3months", "all"])
+    .default("all"),
+  rm: z.enum(["1RM", "5RM", "over8RM"]).default("over8RM"),
   exerciseSeqs: z
     .array(z.number().int().positive())
     .min(1, "최소 1개 이상의 운동을 선택해야 합니다.")
@@ -55,7 +63,9 @@ export const ExerciseWeightStatsFilterSchema = z.object({
  * 유산소 운동 통계 필터 스키마
  */
 export const CardioStatsFilterSchema = z.object({
-  period: PeriodSchema.default("3months"),
+  period: z
+    .enum(["1months", "3months", "6months", "1year", "2years", "all"])
+    .default("3months"),
   exerciseSeqs: z.array(z.number()).optional(),
 });
 
@@ -63,7 +73,13 @@ export const CardioStatsFilterSchema = z.object({
  * 운동 볼륨 통계 필터 스키마
  */
 export const BodyPartVolumeStatsFilterSchema = z.object({
-  period: PeriodSchema.default("3months"),
-  interval: MonthIntervalSchema.default("1week"),
-  bodyPart: BodyPartSchema.default("chest"),
+  period: z
+    .enum(["1months", "3months", "6months", "1year", "2years", "all"])
+    .default("3months"),
+  interval: z
+    .enum(["1week", "2weeks", "1month", "3months", "all"])
+    .default("1week"),
+  bodyPart: z
+    .enum(["all", "chest", "back", "legs", "shoulders", "triceps", "biceps"])
+    .default("all"),
 });

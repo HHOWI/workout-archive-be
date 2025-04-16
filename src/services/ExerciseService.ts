@@ -10,6 +10,9 @@ import {
 } from "../dtos/ExerciseDTO";
 import { CustomError } from "../utils/customError";
 
+/**
+ * 운동 종목 관련 비즈니스 로직을 처리하는 서비스
+ */
 export class ExerciseService {
   private exerciseRepo: Repository<Exercise>;
 
@@ -23,22 +26,14 @@ export class ExerciseService {
    */
   @ErrorDecorator("ExerciseService.findAllExercise")
   public async findAllExercise(): Promise<ExerciseDTO[]> {
-    try {
-      const exercises = await this.exerciseRepo.find({
-        order: {
-          exerciseType: "ASC",
-          exerciseName: "ASC",
-        },
-      });
+    const exercises = await this.exerciseRepo.find({
+      order: {
+        exerciseType: "ASC",
+        exerciseName: "ASC",
+      },
+    });
 
-      return exercises.map(toExerciseDTO);
-    } catch (error) {
-      throw new CustomError(
-        "운동 종목 조회 중 오류가 발생했습니다.",
-        500,
-        "ExerciseService.findAllExercise"
-      );
-    }
+    return exercises.map(toExerciseDTO);
   }
 
   /**
@@ -47,19 +42,8 @@ export class ExerciseService {
    */
   @ErrorDecorator("ExerciseService.findGroupedExercises")
   public async findGroupedExercises(): Promise<GroupedExercisesDTO> {
-    try {
-      const exercises = await this.findAllExercise();
-      return groupExercisesByType(exercises);
-    } catch (error) {
-      if (error instanceof CustomError) {
-        throw error;
-      }
-      throw new CustomError(
-        "운동 종목 그룹화 중 오류가 발생했습니다.",
-        500,
-        "ExerciseService.findGroupedExercises"
-      );
-    }
+    const exercises = await this.findAllExercise();
+    return groupExercisesByType(exercises);
   }
 
   /**
@@ -69,29 +53,18 @@ export class ExerciseService {
    */
   @ErrorDecorator("ExerciseService.findExerciseById")
   public async findExerciseById(exerciseSeq: number): Promise<ExerciseDTO> {
-    try {
-      const exercise = await this.exerciseRepo.findOne({
-        where: { exerciseSeq },
-      });
+    const exercise = await this.exerciseRepo.findOne({
+      where: { exerciseSeq },
+    });
 
-      if (!exercise) {
-        throw new CustomError(
-          "해당 운동 종목을 찾을 수 없습니다.",
-          404,
-          "ExerciseService.findExerciseById"
-        );
-      }
-
-      return toExerciseDTO(exercise);
-    } catch (error) {
-      if (error instanceof CustomError) {
-        throw error;
-      }
+    if (!exercise) {
       throw new CustomError(
-        "운동 종목 조회 중 오류가 발생했습니다.",
-        500,
+        "해당 운동 종목을 찾을 수 없습니다.",
+        404,
         "ExerciseService.findExerciseById"
       );
     }
+
+    return toExerciseDTO(exercise);
   }
 }

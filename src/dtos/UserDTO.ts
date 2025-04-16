@@ -28,6 +28,7 @@ export interface ProfileInfoDTO {
   imageUrl: string;
   workoutCount: number;
   isOwner: boolean;
+  isFollowing?: boolean;
   followCounts: {
     followerCount: number;
     followingCount: number;

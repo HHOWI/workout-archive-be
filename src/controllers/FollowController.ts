@@ -1,45 +1,30 @@
 import asyncHandler from "express-async-handler";
 import { Request, Response } from "express";
 import { FollowService } from "../services/FollowService";
-import { CustomError } from "../utils/customError";
 import { UserFollowSchema, PlaceFollowSchema } from "../schema/FollowSchema";
 import { ControllerUtil } from "../utils/controllerUtil";
 import { SeqSchema } from "../schema/BaseSchema";
-import { ZodError } from "zod";
 import { FollowStatusDTO, PlaceFollowerCountDTO } from "../dtos/FollowDTO";
+import { ValidationUtil } from "../utils/validationUtil";
+import { CustomError } from "../utils/customError";
 
+/**
+ * 팔로우 관련 요청을 처리하는 컨트롤러
+ *
+ * SRP에 따라 이 컨트롤러는 다음 책임만 가집니다:
+ * - 입력 데이터 검증
+ * - 서비스 계층 호출
+ * - HTTP 응답 형식 생성
+ */
 export class FollowController {
-  private followService = new FollowService();
+  private readonly followService: FollowService;
 
   /**
-   * 에러 처리 유틸리티 메서드
+   * 의존성 주입 패턴을 통한 생성자
+   * @param followService FollowService 인스턴스 (선택적)
    */
-  private handleError(error: unknown, context: string): never {
-    if (error instanceof ZodError) {
-      throw new CustomError(
-        "요청 데이터가 유효하지 않습니다.",
-        400,
-        `FollowController.${context}`,
-        error.errors.map((err) => ({
-          message: err.message,
-          path: err.path.map((p) => String(p)),
-        }))
-      );
-    }
-
-    if (error instanceof CustomError) {
-      throw error;
-    }
-
-    if (error instanceof Error) {
-      throw new CustomError(error.message, 400, `FollowController.${context}`);
-    }
-
-    throw new CustomError(
-      "요청 처리 중 오류가 발생했습니다.",
-      500,
-      `FollowController.${context}`
-    );
+  constructor(followService?: FollowService) {
+    this.followService = followService || new FollowService();
   }
 
   /**
@@ -48,15 +33,22 @@ export class FollowController {
    */
   public followUser = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const followerUserSeq = ControllerUtil.getAuthenticatedUserId(req);
-        const { followingUserSeq } = UserFollowSchema.parse(req.body);
+      // 사용자 인증 정보 확인
+      const followerUserSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        await this.followService.followUser(followerUserSeq, followingUserSeq);
-        res.status(201).json({ message: "사용자 팔로우가 완료되었습니다." });
-      } catch (error) {
-        this.handleError(error, "followUser");
-      }
+      // 요청 본문 유효성 검증
+      const { followingUserSeq } = ValidationUtil.validateBody(
+        req,
+        UserFollowSchema,
+        "잘못된 팔로우 요청입니다.",
+        "FollowController.followUser"
+      );
+
+      // 서비스 호출
+      await this.followService.followUser(followerUserSeq, followingUserSeq);
+
+      // 응답 반환
+      res.status(201).json({ message: "사용자 팔로우가 완료되었습니다." });
     }
   );
 
@@ -66,18 +58,23 @@ export class FollowController {
    */
   public unfollowUser = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const followerUserSeq = ControllerUtil.getAuthenticatedUserId(req);
-        const followingUserSeq = SeqSchema.parse(req.params.followingUserSeq);
+      // 사용자 인증 정보 확인
+      const followerUserSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        await this.followService.unfollowUser(
-          followerUserSeq,
-          followingUserSeq
-        );
-        res.json({ message: "언팔로우가 완료되었습니다." });
-      } catch (error) {
-        this.handleError(error, "unfollowUser");
-      }
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const followingUserSeq = ValidationUtil.validatePathParam(
+        req,
+        "followingUserSeq",
+        SeqSchema,
+        "잘못된 사용자 시퀀스입니다.",
+        "FollowController.unfollowUser"
+      );
+
+      // 서비스 호출
+      await this.followService.unfollowUser(followerUserSeq, followingUserSeq);
+
+      // 응답 반환
+      res.json({ message: "언팔로우가 완료되었습니다." });
     }
   );
 
@@ -87,15 +84,22 @@ export class FollowController {
    */
   public followPlace = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-        const { workoutPlaceSeq } = PlaceFollowSchema.parse(req.body);
+      // 사용자 인증 정보 확인
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        await this.followService.followPlace(userSeq, workoutPlaceSeq);
-        res.status(201).json({ message: "장소 팔로우가 완료되었습니다." });
-      } catch (error) {
-        this.handleError(error, "followPlace");
-      }
+      // 요청 본문 유효성 검증
+      const { workoutPlaceSeq } = ValidationUtil.validateBody(
+        req,
+        PlaceFollowSchema,
+        "잘못된 장소 팔로우 요청입니다.",
+        "FollowController.followPlace"
+      );
+
+      // 서비스 호출
+      await this.followService.followPlace(userSeq, workoutPlaceSeq);
+
+      // 응답 반환
+      res.status(201).json({ message: "장소 팔로우가 완료되었습니다." });
     }
   );
 
@@ -105,15 +109,23 @@ export class FollowController {
    */
   public unfollowPlace = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-        const workoutPlaceSeq = SeqSchema.parse(req.params.workoutPlaceSeq);
+      // 사용자 인증 정보 확인
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        await this.followService.unfollowPlace(userSeq, workoutPlaceSeq);
-        res.json({ message: "장소 언팔로우가 완료되었습니다." });
-      } catch (error) {
-        this.handleError(error, "unfollowPlace");
-      }
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const workoutPlaceSeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutPlaceSeq",
+        SeqSchema,
+        "잘못된 장소 시퀀스입니다.",
+        "FollowController.unfollowPlace"
+      );
+
+      // 서비스 호출
+      await this.followService.unfollowPlace(userSeq, workoutPlaceSeq);
+
+      // 응답 반환
+      res.json({ message: "장소 언팔로우가 완료되었습니다." });
     }
   );
 
@@ -123,13 +135,20 @@ export class FollowController {
    */
   public getFollowers = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = SeqSchema.parse(req.params.userSeq);
-        const followers = await this.followService.getFollowers(userSeq);
-        res.json(followers);
-      } catch (error) {
-        this.handleError(error, "getFollowers");
-      }
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const userSeq = ValidationUtil.validatePathParam(
+        req,
+        "userSeq",
+        SeqSchema,
+        "잘못된 사용자 시퀀스입니다.",
+        "FollowController.getFollowers"
+      );
+
+      // 서비스 호출
+      const followers = await this.followService.getFollowers(userSeq);
+
+      // 응답 반환
+      res.json(followers);
     }
   );
 
@@ -139,13 +158,20 @@ export class FollowController {
    */
   public getFollowing = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = SeqSchema.parse(req.params.userSeq);
-        const following = await this.followService.getFollowing(userSeq);
-        res.json(following);
-      } catch (error) {
-        this.handleError(error, "getFollowing");
-      }
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const userSeq = ValidationUtil.validatePathParam(
+        req,
+        "userSeq",
+        SeqSchema,
+        "잘못된 사용자 시퀀스입니다.",
+        "FollowController.getFollowing"
+      );
+
+      // 서비스 호출
+      const following = await this.followService.getFollowing(userSeq);
+
+      // 응답 반환
+      res.json(following);
     }
   );
 
@@ -155,13 +181,20 @@ export class FollowController {
    */
   public getFollowingPlaces = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = SeqSchema.parse(req.params.userSeq);
-        const places = await this.followService.getFollowingPlaces(userSeq);
-        res.json(places);
-      } catch (error) {
-        this.handleError(error, "getFollowingPlaces");
-      }
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const userSeq = ValidationUtil.validatePathParam(
+        req,
+        "userSeq",
+        SeqSchema,
+        "잘못된 사용자 시퀀스입니다.",
+        "FollowController.getFollowingPlaces"
+      );
+
+      // 서비스 호출
+      const places = await this.followService.getFollowingPlaces(userSeq);
+
+      // 응답 반환
+      res.json(places);
     }
   );
 
@@ -171,13 +204,20 @@ export class FollowController {
    */
   public getFollowCounts = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = SeqSchema.parse(req.params.userSeq);
-        const counts = await this.followService.getFollowCounts(userSeq);
-        res.json(counts);
-      } catch (error) {
-        this.handleError(error, "getFollowCounts");
-      }
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const userSeq = ValidationUtil.validatePathParam(
+        req,
+        "userSeq",
+        SeqSchema,
+        "잘못된 사용자 시퀀스입니다.",
+        "FollowController.getFollowCounts"
+      );
+
+      // 서비스 호출
+      const counts = await this.followService.getFollowCounts(userSeq);
+
+      // 응답 반환
+      res.json(counts);
     }
   );
 
@@ -194,20 +234,27 @@ export class FollowController {
         return;
       }
 
-      try {
-        const followerUserSeq = ControllerUtil.getAuthenticatedUserId(req);
-        const followingUserSeq = SeqSchema.parse(req.params.followingUserSeq);
+      // 사용자 인증 정보 확인
+      const followerUserSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        const isFollowing = await this.followService.checkUserFollowStatus(
-          followerUserSeq,
-          followingUserSeq
-        );
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const followingUserSeq = ValidationUtil.validatePathParam(
+        req,
+        "followingUserSeq",
+        SeqSchema,
+        "잘못된 사용자 시퀀스입니다.",
+        "FollowController.checkUserFollowStatus"
+      );
 
-        const response: FollowStatusDTO = { isFollowing };
-        res.json(response);
-      } catch (error) {
-        this.handleError(error, "checkUserFollowStatus");
-      }
+      // 서비스 호출
+      const isFollowing = await this.followService.checkUserFollowStatus(
+        followerUserSeq,
+        followingUserSeq
+      );
+
+      // 응답 반환
+      const response: FollowStatusDTO = { isFollowing };
+      res.json(response);
     }
   );
 
@@ -224,20 +271,27 @@ export class FollowController {
         return;
       }
 
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-        const workoutPlaceSeq = SeqSchema.parse(req.params.workoutPlaceSeq);
+      // 사용자 인증 정보 확인
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        const isFollowing = await this.followService.checkPlaceFollowStatus(
-          userSeq,
-          workoutPlaceSeq
-        );
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const workoutPlaceSeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutPlaceSeq",
+        SeqSchema,
+        "잘못된 장소 시퀀스입니다.",
+        "FollowController.checkPlaceFollowStatus"
+      );
 
-        const response: FollowStatusDTO = { isFollowing };
-        res.json(response);
-      } catch (error) {
-        this.handleError(error, "checkPlaceFollowStatus");
-      }
+      // 서비스 호출
+      const isFollowing = await this.followService.checkPlaceFollowStatus(
+        userSeq,
+        workoutPlaceSeq
+      );
+
+      // 응답 반환
+      const response: FollowStatusDTO = { isFollowing };
+      res.json(response);
     }
   );
 
@@ -247,16 +301,23 @@ export class FollowController {
    */
   public getPlaceFollowerCount = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const workoutPlaceSeq = SeqSchema.parse(req.params.workoutPlaceSeq);
-        const count = await this.followService.getPlaceFollowerCount(
-          workoutPlaceSeq
-        );
-        const response: PlaceFollowerCountDTO = { count };
-        res.json(response);
-      } catch (error) {
-        this.handleError(error, "getPlaceFollowerCount");
-      }
+      // 경로 파라미터 유효성 검증 (유틸리티 메서드 사용)
+      const workoutPlaceSeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutPlaceSeq",
+        SeqSchema,
+        "잘못된 장소 시퀀스입니다.",
+        "FollowController.getPlaceFollowerCount"
+      );
+
+      // 서비스 호출
+      const count = await this.followService.getPlaceFollowerCount(
+        workoutPlaceSeq
+      );
+
+      // 응답 반환
+      const response: PlaceFollowerCountDTO = { count };
+      res.json(response);
     }
   );
 }

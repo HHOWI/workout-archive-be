@@ -6,7 +6,25 @@ import { SeqSchema } from "../schema/BaseSchema";
 import { ExerciseSeqSchema } from "../schema/ExerciseSchema";
 
 export class ExerciseController {
-  private exerciseService = new ExerciseService();
+  private exerciseService: ExerciseService;
+
+  constructor() {
+    this.exerciseService = new ExerciseService();
+  }
+
+  /**
+   * 에러 처리 헬퍼 메서드
+   */
+  private handleError(error: unknown, context: string): never {
+    if (error instanceof CustomError) {
+      throw error;
+    }
+    throw new CustomError(
+      "운동 관련 요청 처리 중 오류가 발생했습니다.",
+      500,
+      `ExerciseController.${context}`
+    );
+  }
 
   /**
    * 모든 운동 종류 조회 (클라이언트 캐싱용)
@@ -20,14 +38,7 @@ export class ExerciseController {
         res.setHeader("Cache-Control", "public, max-age=3600");
         res.status(200).json(exercises);
       } catch (error) {
-        if (error instanceof CustomError) {
-          throw error;
-        }
-        throw new CustomError(
-          "운동 목록 조회 중 오류가 발생했습니다.",
-          500,
-          "ExerciseController.getAllExercises"
-        );
+        this.handleError(error, "getAllExercises");
       }
     }
   );
@@ -45,14 +56,7 @@ export class ExerciseController {
         res.setHeader("Cache-Control", "public, max-age=3600");
         res.status(200).json(groupedExercises);
       } catch (error) {
-        if (error instanceof CustomError) {
-          throw error;
-        }
-        throw new CustomError(
-          "운동 목록 조회 중 오류가 발생했습니다.",
-          500,
-          "ExerciseController.getGroupedExercises"
-        );
+        this.handleError(error, "getGroupedExercises");
       }
     }
   );
@@ -70,14 +74,7 @@ export class ExerciseController {
 
         res.status(200).json(exercise);
       } catch (error) {
-        if (error instanceof CustomError) {
-          throw error;
-        }
-        throw new CustomError(
-          "운동 조회 중 오류가 발생했습니다.",
-          500,
-          "ExerciseController.getExerciseById"
-        );
+        this.handleError(error, "getExerciseById");
       }
     }
   );

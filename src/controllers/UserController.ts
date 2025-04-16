@@ -3,16 +3,12 @@ import { Request, Response } from "express";
 import { UserService } from "../services/UserService";
 import { CustomError } from "../utils/customError";
 import { LoginSchema } from "../schema/UserSchema";
-import { LoginDTO, ProfileInfoDTO } from "../dtos/UserDTO";
+import { LoginDTO } from "../dtos/UserDTO";
 import { ControllerUtil } from "../utils/controllerUtil";
-import { FollowService } from "../services/FollowService";
 import { ZodError } from "zod";
-import { WorkoutOfTheDayService } from "../services/WorkoutOfTheDayService";
 
 export class UserController {
   private userService = new UserService();
-  private workoutOfTheDayService = new WorkoutOfTheDayService();
-  private followService = new FollowService();
 
   /**
    * 공통 에러 핸들러 함수
@@ -73,8 +69,6 @@ export class UserController {
         );
       }
 
-      this.validateImageFile(req.file);
-
       const imageUrl = await this.userService.updateProfileImage(
         userSeq,
         req.file
@@ -82,36 +76,6 @@ export class UserController {
       res.json({ imageUrl });
     }
   );
-
-  /**
-   * 이미지 파일 유효성 검사 로직 추출
-   */
-  private validateImageFile(file: Express.Multer.File): void {
-    // 파일 유효성 검사
-    const allowedMimeTypes = [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-    ];
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new CustomError(
-        "허용되지 않는 파일 형식입니다. JPEG, PNG, GIF, WEBP 형식만 허용됩니다.",
-        400,
-        "UserController.updateProfileImage"
-      );
-    }
-
-    // 파일 크기 제한 확인 (5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    if (file.size > maxSize) {
-      throw new CustomError(
-        "파일 크기는 5MB 이하여야 합니다.",
-        400,
-        "UserController.updateProfileImage"
-      );
-    }
-  }
 
   // POST /users/logout
   public logoutUser = asyncHandler(
@@ -202,7 +166,14 @@ export class UserController {
     async (req: Request, res: Response): Promise<void> => {
       try {
         const userNickname = req.params.userNickname;
-        const profileInfo = await this.fetchProfileInfo(userNickname, req);
+        // 로그인한 사용자인 경우 사용자 ID 전달, 아니면 null
+        const loggedInUserSeq = req.user ? req.user.userSeq : null;
+
+        const profileInfo = await this.userService.getProfileInfo(
+          userNickname,
+          loggedInUserSeq
+        );
+
         res.json(profileInfo);
       } catch (error) {
         if (error instanceof CustomError) {
@@ -216,59 +187,4 @@ export class UserController {
       }
     }
   );
-
-  /**
-   * 프로필 정보 조회 로직 추출
-   */
-  private async fetchProfileInfo(
-    userNickname: string,
-    req: Request
-  ): Promise<ProfileInfoDTO> {
-    // 비로그인 상태일 경우 isOwner를 false로 초기화
-    let isOwner = false;
-
-    // 사용자 시퀀스 먼저 조회
-    const userSeq = await this.userService.getUserSeqByNickname(userNickname);
-
-    if (userSeq === null) {
-      throw new CustomError(
-        "사용자를 찾을 수 없습니다.",
-        404,
-        "UserController.getProfileInfo"
-      );
-    }
-
-    // 로그인 상태이면 프로필 소유권 확인
-    if (req.user) {
-      const loggedInUserSeq = req.user.userSeq;
-      // 직접 userSeq 비교로 소유권 확인 (더 명확하고 간단함)
-      isOwner = loggedInUserSeq === userSeq;
-    }
-
-    // 병렬로 필요한 정보 조회
-    const [imageUrl, workoutCount, followCounts] = await Promise.all([
-      this.userService.getProfileImage(userNickname),
-      this.workoutOfTheDayService.getWorkoutOfTheDayCountByNickname(
-        userNickname
-      ),
-      this.followService.getFollowCounts(userSeq),
-    ]);
-
-    // 팔로잉 카운트에 사용자와 장소 팔로잉 합산
-    const totalFollowingCount =
-      followCounts.followingCount + followCounts.followingPlaceCount;
-
-    // 통합 응답 반환
-    return {
-      userNickname,
-      userSeq,
-      imageUrl,
-      workoutCount,
-      isOwner,
-      followCounts: {
-        followerCount: followCounts.followerCount,
-        followingCount: totalFollowingCount,
-      },
-    };
-  }
 }

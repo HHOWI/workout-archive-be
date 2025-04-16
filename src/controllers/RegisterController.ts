@@ -11,7 +11,6 @@ import {
   VerifyEmailSchema,
 } from "../schema/UserSchema";
 import { ZodError } from "zod";
-import { ControllerUtil } from "../utils/controllerUtil";
 
 export class RegisterController {
   private registerService = new RegisterService();
@@ -98,10 +97,9 @@ export class RegisterController {
         // Zod 스키마를 사용하여 유효성 검사
         const registerData: RegisterDTO = RegisterSchema.parse(req.body);
 
-        // 중복 체크
-        await this.checkDuplication(registerData);
-
+        // 서비스로 회원가입 로직 위임 (중복 체크는 서비스 내부에서 이루어짐)
         await this.registerService.registerUser(registerData);
+
         res.status(201).json({
           message: "가입이 완료되었습니다. 이메일 인증을 진행해주세요.",
         });
@@ -110,43 +108,6 @@ export class RegisterController {
       }
     }
   );
-
-  /**
-   * 회원가입 시 중복 체크 로직 통합
-   */
-  private async checkDuplication(data: RegisterDTO): Promise<void> {
-    const existingUserId = await this.registerService.isUserIdDuplicated(
-      data.userId
-    );
-    if (existingUserId) {
-      throw new CustomError(
-        "이미 사용 중인 아이디입니다.",
-        409,
-        "RegisterController.registerUser"
-      );
-    }
-
-    const existingUserNickname =
-      await this.registerService.isUserNicknameDuplicated(data.userNickname);
-    if (existingUserNickname) {
-      throw new CustomError(
-        "이미 사용 중인 닉네임입니다.",
-        409,
-        "RegisterController.registerUser"
-      );
-    }
-
-    const existingUserEmail = await this.registerService.isUserEmailDuplicated(
-      data.userEmail
-    );
-    if (existingUserEmail) {
-      throw new CustomError(
-        "이미 사용 중인 이메일입니다.",
-        409,
-        "RegisterController.registerUser"
-      );
-    }
-  }
 
   // GET /verify/:token
   public verifyEmail = asyncHandler(
