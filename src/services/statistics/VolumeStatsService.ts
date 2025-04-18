@@ -174,124 +174,179 @@ export class VolumeStatsService {
   ): VolumeDataPoint[] {
     const result: VolumeDataPoint[] = [];
 
-    // 데이터가 없으면 빈 배열 반환
+    // 현재 날짜(오늘)을 종료일로 설정
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+
+    // 데이터가 없어도 현재 날짜까지의 기간을 표시하기 위해
+    // 데이터가 없는 경우 최소 시작일을 계산
+    let firstDate: Date;
     if (Object.keys(volumeData).length === 0) {
-      return result;
+      firstDate = DateUtil.calculateStartDate(period);
+    } else {
+      // 모든 날짜 가져오기 및 정렬
+      const dates = Object.keys(volumeData).sort();
+      firstDate = new Date(dates[0]);
     }
-
-    // 모든 날짜 가져오기 및 정렬
-    const dates = Object.keys(volumeData).sort();
-
-    // 시작일과 종료일 계산
-    const firstDate = new Date(dates[0]);
-    const lastDate = new Date(dates[dates.length - 1]);
 
     // 주기에 따라 그룹화
     switch (interval) {
       case "1week": {
-        // 첫 날짜가 속한 주의 월요일 계산
-        const startMonday = new Date(firstDate);
-        const day = startMonday.getDay(); // 0: 일요일, 1: 월요일, ..., 6: 토요일
+        // 특정 날짜가 속한 주의 월요일(주 시작일) 계산
+        const getWeekStartDate = (date: Date): Date => {
+          const result = new Date(date);
+          const day = result.getDay(); // 0: 일요일, 1: 월요일, ..., 6: 토요일
 
-        // 월요일이 되도록 날짜 조정 (일요일이면 -6, 월요일이면 0, 화요일이면 -1 등)
-        const diff = day === 0 ? -6 : 1 - day;
-        startMonday.setDate(startMonday.getDate() + diff);
-        startMonday.setHours(0, 0, 0, 0);
+          // 월요일이 되도록 날짜 조정
+          const diff = day === 0 ? -6 : 1 - day;
+          result.setDate(result.getDate() + diff);
+          result.setHours(0, 0, 0, 0);
+          return result;
+        };
 
-        let currentMonday = new Date(startMonday);
+        // 날짜가 속한 주의 라벨을 생성 (해당 주의 월요일 ~ 일요일)
+        const getWeekLabel = (date: Date): string => {
+          const weekStart = getWeekStartDate(date);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6);
 
-        while (currentMonday <= lastDate) {
-          // 이번 주 일요일 계산 (월요일 + 6일)
-          const nextSunday = new Date(currentMonday);
-          nextSunday.setDate(currentMonday.getDate() + 6);
-          nextSunday.setHours(23, 59, 59, 999);
+          return `${DateUtil.formatDateToMMDD(
+            weekStart
+          )} ~ ${DateUtil.formatDateToMMDD(weekEnd)}`;
+        };
 
-          let totalVolume = 0;
+        // 볼륨 데이터를 주 단위로 그룹화
+        const weeklyData: { [weekLabel: string]: number } = {};
 
-          // 이 주에 해당하는 날짜들 순회 (월요일부터 일요일까지)
-          for (let d = 0; d <= 6; d++) {
-            const currentDate = new Date(currentMonday);
-            currentDate.setDate(currentMonday.getDate() + d);
+        // 데이터를 주별로 그룹화 (각 날짜가 속한 주 찾기)
+        Object.entries(volumeData).forEach(([dateStr, volume]) => {
+          const date = new Date(dateStr);
+          const weekLabel = getWeekLabel(date);
 
-            // 마지막 날짜를 넘어가면 중단
-            if (currentDate > lastDate) break;
+          // 해당 주의 볼륨 누적
+          weeklyData[weekLabel] = (weeklyData[weekLabel] || 0) + volume;
+        });
 
-            const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
-            if (volumeData[dateStr]) {
-              totalVolume += volumeData[dateStr];
-            }
+        // 첫 주부터 현재 주까지 빈 주도 표시하기 위한 처리
+        const currentWeekEnd = new Date(endDate);
+        let currentWeekStart = getWeekStartDate(firstDate);
+
+        while (currentWeekStart <= currentWeekEnd) {
+          const weekLabel = getWeekLabel(currentWeekStart);
+
+          // 해당 주의 데이터가 없다면 0으로 초기화
+          if (!weeklyData[weekLabel]) {
+            weeklyData[weekLabel] = 0;
           }
 
-          // 주 구간 라벨 생성 (MM-DD ~ MM-DD)
-          // 정확한 월요일-일요일 날짜로 라벨 생성
-          const mondayLabel = DateUtil.formatDateToMMDD(currentMonday);
+          // 다음 주로 이동
+          currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+        }
 
-          // 일요일 또는 마지막 날짜(lastDate가 nextSunday보다 이전인 경우)
-          const endDate = nextSunday > lastDate ? lastDate : nextSunday;
-          const sundayLabel = DateUtil.formatDateToMMDD(endDate);
-
-          const weekLabel = `${mondayLabel} ~ ${sundayLabel}`;
-
-          result.push({
-            date: weekLabel,
-            value: totalVolume,
+        // 결과 배열에 추가하고 날짜 순으로 정렬
+        const sortedEntries = Object.entries(weeklyData)
+          .map(([date, value]) => ({ date, value }))
+          .sort((a, b) => {
+            // MM-DD ~ MM-DD 형식에서 첫 번째 MM-DD 부분으로 정렬
+            const dateA = a.date.split(" ~ ")[0];
+            const dateB = b.date.split(" ~ ")[0];
+            return dateA.localeCompare(dateB);
           });
 
-          // 다음 월요일로 이동 (현재 월요일 + 7일)
-          currentMonday.setDate(currentMonday.getDate() + 7);
-        }
+        // 정렬된 데이터를 결과 배열에 추가
+        sortedEntries.forEach((entry) => {
+          result.push(entry);
+        });
+
         break;
       }
 
       case "2weeks": {
-        // 첫 날짜가 속한 2주 기간의 시작 월요일 계산
-        const startMonday = new Date(firstDate);
-        const day = startMonday.getDay();
-        const diff = day === 0 ? -6 : 1 - day; // 월요일로 조정
-        startMonday.setDate(startMonday.getDate() + diff);
-        startMonday.setHours(0, 0, 0, 0);
+        // 1week 케이스에서 정의한 함수 재사용
+        const getWeekStartDate = (date: Date): Date => {
+          const result = new Date(date);
+          const day = result.getDay(); // 0: 일요일, 1: 월요일, ..., 6: 토요일
 
-        let currentMonday = new Date(startMonday);
+          // 월요일이 되도록 날짜 조정
+          const diff = day === 0 ? -6 : 1 - day;
+          result.setDate(result.getDate() + diff);
+          result.setHours(0, 0, 0, 0);
+          return result;
+        };
 
-        while (currentMonday <= lastDate) {
-          // 2주 후 일요일 계산 (월요일 + 13일)
-          const nextSunday = new Date(currentMonday);
-          nextSunday.setDate(currentMonday.getDate() + 13);
-          nextSunday.setHours(23, 59, 59, 999);
+        // 2주 라벨 생성 함수 (월요일부터 2주 후 일요일까지)
+        const getTwoWeekLabel = (date: Date): string => {
+          const weekStart = getWeekStartDate(date);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 13); // 2주 (14일) - 1
 
-          let totalVolume = 0;
+          return `${DateUtil.formatDateToMMDD(
+            weekStart
+          )} ~ ${DateUtil.formatDateToMMDD(weekEnd)}`;
+        };
 
-          // 이 2주에 해당하는 날짜들 순회 (월요일부터 2주 후 일요일까지)
-          for (let d = 0; d <= 13; d++) {
-            const currentDate = new Date(currentMonday);
-            currentDate.setDate(currentMonday.getDate() + d);
+        // 볼륨 데이터를 2주 단위로 그룹화
+        const twoWeekData: { [weekLabel: string]: number } = {};
 
-            // 마지막 날짜를 넘어가면 중단
-            if (currentDate > lastDate) break;
+        // 첫 날짜가 속한 주의 월요일 계산 (2주 주기 시작일)
+        const firstWeekStart = getWeekStartDate(firstDate);
 
-            const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
-            if (volumeData[dateStr]) {
-              totalVolume += volumeData[dateStr];
-            }
+        // 데이터를 2주 단위로 그룹화
+        Object.entries(volumeData).forEach(([dateStr, volume]) => {
+          const date = new Date(dateStr);
+
+          // 이 날짜가 속한 2주 주기의 시작일 찾기
+          const weekStart = getWeekStartDate(date);
+
+          // 첫 주 시작일로부터의 차이(일)를 계산하여 어느 2주 주기에 속하는지 결정
+          const daysDiff = Math.floor(
+            (weekStart.getTime() - firstWeekStart.getTime()) /
+              (24 * 60 * 60 * 1000)
+          );
+          const twoWeekIndex = Math.floor(daysDiff / 14); // 14일마다 새 주기
+
+          // 2주 주기의 시작일 계산
+          const twoWeekStart = new Date(firstWeekStart);
+          twoWeekStart.setDate(firstWeekStart.getDate() + twoWeekIndex * 14);
+
+          // 2주 주기 라벨 생성
+          const label = getTwoWeekLabel(twoWeekStart);
+
+          // 해당 2주 주기에 볼륨 누적
+          twoWeekData[label] = (twoWeekData[label] || 0) + volume;
+        });
+
+        // 빈 2주 주기도 표시
+        let currentTwoWeekStart = getWeekStartDate(firstDate);
+        const currentWeekEnd = new Date(endDate);
+
+        while (currentTwoWeekStart <= currentWeekEnd) {
+          const label = getTwoWeekLabel(currentTwoWeekStart);
+
+          // 해당 2주 주기 데이터가 없으면 0으로 초기화
+          if (!twoWeekData[label]) {
+            twoWeekData[label] = 0;
           }
 
-          // 2주 구간 라벨 생성
-          const mondayLabel = DateUtil.formatDateToMMDD(currentMonday);
+          // 다음 2주 주기로 이동
+          currentTwoWeekStart.setDate(currentTwoWeekStart.getDate() + 14);
+        }
 
-          // 2주 후 일요일 또는 마지막 날짜
-          const endDate = nextSunday > lastDate ? lastDate : nextSunday;
-          const sundayLabel = DateUtil.formatDateToMMDD(endDate);
-
-          const twoWeekLabel = `${mondayLabel} ~ ${sundayLabel}`;
-
-          result.push({
-            date: twoWeekLabel,
-            value: totalVolume,
+        // 결과 배열에 추가하고 날짜 순으로 정렬
+        const sortedEntries = Object.entries(twoWeekData)
+          .map(([date, value]) => ({ date, value }))
+          .sort((a, b) => {
+            // MM-DD ~ MM-DD 형식에서 첫 번째 MM-DD 부분으로 정렬
+            const dateA = a.date.split(" ~ ")[0];
+            const dateB = b.date.split(" ~ ")[0];
+            return dateA.localeCompare(dateB);
           });
 
-          // 다음 2주 시작일로 이동 (현재 월요일 + 14일)
-          currentMonday.setDate(currentMonday.getDate() + 14);
-        }
+        // 정렬된 데이터를 결과 배열에 추가
+        sortedEntries.forEach((entry) => {
+          result.push(entry);
+        });
+
         break;
       }
 
@@ -305,7 +360,7 @@ export class VolumeStatsService {
 
         let currentMonth = new Date(startOfMonth);
 
-        while (currentMonth <= lastDate) {
+        while (currentMonth <= endDate) {
           // 월말 계산
           const endOfMonth = new Date(
             currentMonth.getFullYear(),
@@ -321,7 +376,7 @@ export class VolumeStatsService {
           const currentDate = new Date(currentMonth);
 
           // 월간 데이터 합산
-          while (currentDate <= endOfMonth && currentDate <= lastDate) {
+          while (currentDate <= endOfMonth && currentDate <= endDate) {
             const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
             if (volumeData[dateStr]) {
               totalVolume += volumeData[dateStr];
@@ -356,7 +411,7 @@ export class VolumeStatsService {
 
         let currentQuarter = new Date(startOfQuarter);
 
-        while (currentQuarter <= lastDate) {
+        while (currentQuarter <= endDate) {
           // 분기 종료일 계산
           const endOfQuarter = new Date(
             currentQuarter.getFullYear(),
@@ -372,7 +427,7 @@ export class VolumeStatsService {
           const currentDate = new Date(currentQuarter);
 
           // 분기 데이터 합산
-          while (currentDate <= endOfQuarter && currentDate <= lastDate) {
+          while (currentDate <= endOfQuarter && currentDate <= endDate) {
             const dateStr = DateUtil.formatDateToYYYYMMDD(currentDate);
             if (volumeData[dateStr]) {
               totalVolume += volumeData[dateStr];

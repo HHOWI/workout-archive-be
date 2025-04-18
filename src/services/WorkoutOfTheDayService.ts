@@ -99,10 +99,16 @@ export class WorkoutOfTheDayService {
     // 운동 기록저장
     try {
       // 1. WorkoutOfTheDay 생성
+
+      // 날짜 문자열 (예: "2024-04-19")을 UTC 자정으로 해석하여 Date 객체 생성
+      const recordDateUTC = new Date(
+        saveWorkoutDTO.workoutData.date + "T00:00:00Z"
+      );
+
       const workoutOfTheDay = queryRunner.manager.create(WorkoutOfTheDay, {
         user,
         workoutPlace: workoutPlace || null,
-        recordDate: new Date(saveWorkoutDTO.workoutData.date),
+        recordDate: recordDateUTC, // UTC 기준으로 생성된 Date 객체 사용
         workoutDiary: saveWorkoutDTO.workoutData.diary,
         workoutPhoto: photoPath,
       });
@@ -299,6 +305,7 @@ export class WorkoutOfTheDayService {
         workoutOfTheDaySeq,
       })
       .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
+      .orderBy("workoutDetails.workoutDetailSeq", "ASC")
       .getOne();
 
     if (!workout) {
@@ -384,6 +391,24 @@ export class WorkoutOfTheDayService {
    */
   @ErrorDecorator("WorkoutOfTheDayService.getRecentWorkoutRecords")
   async getRecentWorkoutRecords(userSeq: number): Promise<WorkoutOfTheDay[]> {
+    // 1. 먼저 최근 운동 기록의 ID 목록을 가져옵니다 (조인 없이)
+    const recentWorkoutIds = await this.workoutRepository
+      .createQueryBuilder("workout")
+      .select(["workout.workoutOfTheDaySeq", "workout.recordDate"])
+      .leftJoin("workout.user", "user")
+      .where("user.userSeq = :userSeq", { userSeq })
+      .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
+      .orderBy("workout.recordDate", "DESC")
+      .take(10)
+      .getMany();
+
+    if (recentWorkoutIds.length === 0) {
+      return [];
+    }
+
+    // 2. 가져온 ID 목록을 기반으로 전체 데이터를 조회합니다
+    const workoutIds = recentWorkoutIds.map((w) => w.workoutOfTheDaySeq);
+
     const workouts = await this.workoutRepository
       .createQueryBuilder("workout")
       .leftJoinAndSelect("workout.workoutPlace", "workoutPlace")
@@ -393,8 +418,11 @@ export class WorkoutOfTheDayService {
       .addSelect(["user.userNickname", "user.profileImageUrl"])
       .where("user.userSeq = :userSeq", { userSeq })
       .andWhere("workout.isDeleted = :isDeleted", { isDeleted: 0 })
-      .orderBy("workout.workoutOfTheDaySeq", "DESC")
-      .take(10)
+      .andWhere("workout.workoutOfTheDaySeq IN (:...workoutIds)", {
+        workoutIds,
+      })
+      .orderBy("workout.recordDate", "DESC")
+      .addOrderBy("workoutDetails.workoutDetailSeq", "ASC")
       .getMany();
 
     return workouts;
