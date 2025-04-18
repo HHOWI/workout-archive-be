@@ -6,8 +6,6 @@ import {
   PlaceSearchResultDTO,
   PlaceSearchResponseDTO,
 } from "../../dtos/SearchDTO";
-import { SearchUtil } from "../../utils/searchUtil";
-import { PaginationUtil } from "../../utils/paginationUtil";
 
 /**
  * 운동 장소 검색 관련 비즈니스 로직을 처리하는 서비스
@@ -17,20 +15,6 @@ export class PlaceSearchService {
 
   constructor() {
     this.workoutPlaceRepository = AppDataSource.getRepository(WorkoutPlace);
-  }
-
-  /**
-   * 커서 장소 정보를 조회합니다
-   */
-  @ErrorDecorator("PlaceSearchService.getCursorPlace")
-  private async getCursorPlace(
-    cursor: number | null
-  ): Promise<WorkoutPlace | null> {
-    if (!cursor) return null;
-
-    return await this.workoutPlaceRepository.findOne({
-      where: { workoutPlaceSeq: cursor },
-    });
   }
 
   /**
@@ -47,57 +31,16 @@ export class PlaceSearchService {
     cursor: number | null = null,
     limit: number = 10
   ): Promise<PlaceSearchResponseDTO> {
-    // '#' 기호가 있으면 제거 후 검색
-    const searchKeyword = SearchUtil.removePrefix(keyword, "#");
+    // 장소 검색, '#' 기호가 있으면 제거 후 검색
+    const searchKeyword = keyword.startsWith("#")
+      ? keyword.substring(1)
+      : keyword;
 
     // 빈 키워드면 빈 배열 반환
-    if (!SearchUtil.isValidKeyword(searchKeyword)) {
+    if (!searchKeyword.trim()) {
       return { places: [], nextCursor: null };
     }
 
-    // 커서 장소 정보 조회
-    const cursorPlace = await this.getCursorPlace(cursor);
-    if (cursor && !cursorPlace) {
-      return { places: [], nextCursor: null };
-    }
-
-    // 검색 결과를 조회합니다
-    const places = await this.findPlacesByName(
-      searchKeyword,
-      cursorPlace?.workoutPlaceSeq,
-      limit + 1
-    );
-
-    // 다음 페이지 커서 계산
-    const nextCursor = PaginationUtil.getNextCursor(
-      places,
-      limit,
-      (place) => place.workoutPlaceSeq
-    );
-
-    // 추가로 가져온 항목 제거
-    if (places.length > limit) {
-      places.pop();
-    }
-
-    // DTO 형식으로 변환
-    const placeResults = this.mapPlacesToDTO(places);
-
-    return {
-      places: placeResults,
-      nextCursor,
-    };
-  }
-
-  /**
-   * 장소명으로 운동 장소를 검색하는 쿼리를 실행합니다
-   */
-  @ErrorDecorator("PlaceSearchService.findPlacesByName")
-  private async findPlacesByName(
-    searchKeyword: string,
-    cursor: number | null = null,
-    limit: number = 10
-  ): Promise<WorkoutPlace[]> {
     // 검색 쿼리 생성
     const query = this.workoutPlaceRepository
       .createQueryBuilder("place")
@@ -108,7 +51,7 @@ export class PlaceSearchService {
         "place.roadAddressName",
       ])
       .where("place.placeName LIKE :keyword", {
-        keyword: SearchUtil.createLikeKeyword(searchKeyword),
+        keyword: `%${searchKeyword}%`,
       })
       .andWhere((qb) => {
         const subQuery = qb
@@ -117,42 +60,50 @@ export class PlaceSearchService {
           .from("WorkoutOfTheDay", "workout")
           .where("workout.workoutPlace = place.workoutPlaceSeq")
           .getQuery();
-        return "EXISTS " + subQuery;
+        return "EXISTS " + subQuery; // 운동 기록이 있는 장소만 검색
       });
 
-    // 커서 기반 페이징 적용
+    // 커서 기반 페이징 적용 (workoutPlaceSeq 기준)
     if (cursor) {
       query.andWhere("place.workoutPlaceSeq > :cursor", { cursor });
     }
 
-    // 정확한 일치 우선 정렬
-    const orderCaseStatement = SearchUtil.createPriorityOrderCaseStatement(
-      "place.placeName",
-      searchKeyword
-    );
-
+    // 정확한 일치 우선 정렬 - Oracle 호환을 위해 수정
     query
-      .orderBy(orderCaseStatement, "ASC")
+      .orderBy(
+        `CASE
+          WHEN place.placeName = :exactKeyword THEN 0
+          WHEN place.placeName LIKE :startKeyword THEN 1
+          ELSE 2
+        END`,
+        "ASC"
+      )
       .setParameter("exactKeyword", searchKeyword)
       .setParameter("startKeyword", `${searchKeyword}%`)
-      .addOrderBy("place.placeName", "ASC")
-      .take(limit);
+      .addOrderBy("place.placeName", "ASC") // 2차 정렬: placeName 오름차순으로 변경
+      .take(limit + 1);
 
     // 결과 조회
-    return await query.getMany();
-  }
+    const places = await query.getMany();
 
-  /**
-   * 장소 엔티티를 DTO로 변환합니다
-   */
-  private mapPlacesToDTO(places: WorkoutPlace[]): PlaceSearchResultDTO[] {
-    return places.map((place) => {
-      const dto = new PlaceSearchResultDTO();
-      dto.workoutPlaceSeq = place.workoutPlaceSeq;
-      dto.placeName = place.placeName;
-      dto.addressName = place.addressName;
-      dto.roadAddressName = place.roadAddressName;
-      return dto;
-    });
+    // 다음 페이지 커서 설정
+    let nextCursor = null;
+    if (places.length > limit) {
+      const nextPlace = places.pop(); // 마지막 항목 제거
+      nextCursor = nextPlace?.workoutPlaceSeq || null;
+    }
+
+    // DTO 형식으로 변환
+    const placeResults: PlaceSearchResultDTO[] = places.map((place) => ({
+      workoutPlaceSeq: place.workoutPlaceSeq,
+      placeName: place.placeName,
+      addressName: place.addressName,
+      roadAddressName: place.roadAddressName,
+    }));
+
+    return {
+      places: placeResults,
+      nextCursor,
+    };
   }
 }

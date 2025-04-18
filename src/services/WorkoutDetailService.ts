@@ -5,26 +5,21 @@ import { Exercise } from "../entities/Exercise";
 import { WorkoutOfTheDay } from "../entities/WorkoutOfTheDay";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 import { CustomError } from "../utils/customError";
-import { ExerciseService } from "./ExerciseService";
+import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
 
 /**
  * 운동 상세 기록 관련 서비스
  */
 export class WorkoutDetailService {
   private workoutDetailRepository: Repository<WorkoutDetail>;
-  private exerciseRepository: Repository<Exercise>;
   private dataSource: DataSource;
-  private exerciseService: ExerciseService;
 
   /**
-   * 의존성 주입 패턴을 통한 생성자
-   * @param exerciseService 주입받을 ExerciseService 인스턴스
+   * 생성자
    */
-  constructor(exerciseService?: ExerciseService) {
+  constructor() {
     this.workoutDetailRepository = AppDataSource.getRepository(WorkoutDetail);
-    this.exerciseRepository = AppDataSource.getRepository(Exercise);
     this.dataSource = AppDataSource;
-    this.exerciseService = exerciseService || new ExerciseService();
   }
 
   /**
@@ -38,7 +33,7 @@ export class WorkoutDetailService {
   async saveWorkoutDetails(
     queryRunner: QueryRunner,
     workoutOfTheDay: WorkoutOfTheDay,
-    exerciseRecords: any[]
+    exerciseRecords: SaveWorkoutDTO["workoutData"]["exerciseRecords"]
   ): Promise<{ details: WorkoutDetail[]; mainExerciseType?: string }> {
     // 1. 필요한 운동 정보 조회
     const exercises = await this.getExercisesForRecords(
@@ -69,7 +64,7 @@ export class WorkoutDetailService {
   @ErrorDecorator("WorkoutDetailService.getExercisesForRecords")
   private async getExercisesForRecords(
     queryRunner: QueryRunner,
-    exerciseRecords: any[]
+    exerciseRecords: SaveWorkoutDTO["workoutData"]["exerciseRecords"]
   ): Promise<Map<number, Exercise>> {
     const exerciseSeqs = exerciseRecords.map(
       (record) => record.exercise.exerciseSeq
@@ -94,7 +89,7 @@ export class WorkoutDetailService {
   private async createWorkoutDetails(
     queryRunner: QueryRunner,
     workoutOfTheDay: WorkoutOfTheDay,
-    exerciseRecords: any[],
+    exerciseRecords: SaveWorkoutDTO["workoutData"]["exerciseRecords"],
     exerciseMap: Map<number, Exercise>
   ): Promise<{
     details: WorkoutDetail[];
@@ -149,11 +144,21 @@ export class WorkoutDetailService {
   private calculateMainExerciseType(
     exerciseTypeCounts: Record<string, number>
   ): string | undefined {
+    // 운동 타입 카운트가 비어있는 경우 체크
+    if (Object.keys(exerciseTypeCounts).length === 0) {
+      return undefined;
+    }
+
     const sortedTypeCounts = Object.entries(exerciseTypeCounts).sort(
       ([, a], [, b]) => b - a
     );
 
-    return sortedTypeCounts[0]?.[0];
+    // 첫 번째 요소가 있는지 확인 후 반환
+    if (sortedTypeCounts.length > 0 && sortedTypeCounts[0].length > 0) {
+      return sortedTypeCounts[0][0];
+    }
+
+    return undefined;
   }
 
   /**
@@ -165,12 +170,10 @@ export class WorkoutDetailService {
   async getWorkoutDetailsByWorkoutId(
     workoutOfTheDaySeq: number
   ): Promise<WorkoutDetail[]> {
-    const details = await this.workoutDetailRepository.find({
+    return this.workoutDetailRepository.find({
       where: { workoutOfTheDay: { workoutOfTheDaySeq } },
       relations: ["exercise"],
       order: { setIndex: "ASC" },
     });
-
-    return details;
   }
 }

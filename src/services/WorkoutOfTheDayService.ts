@@ -16,7 +16,6 @@ import { SaveWorkoutDTO } from "../dtos/WorkoutDTO";
 import { CommentService } from "./CommentService";
 import { WorkoutDetailService } from "./WorkoutDetailService";
 import { WorkoutLikeService } from "./WorkoutLikeService";
-import { ExerciseService } from "./ExerciseService";
 import { deleteImage } from "../utils/fileUtiles";
 
 /**
@@ -37,18 +36,15 @@ export class WorkoutOfTheDayService {
   constructor(
     commentService?: CommentService,
     workoutDetailService?: WorkoutDetailService,
-    workoutLikeService?: WorkoutLikeService,
-    exerciseService?: ExerciseService
+    workoutLikeService?: WorkoutLikeService
   ) {
     this.workoutRepository = AppDataSource.getRepository(WorkoutOfTheDay);
     this.workoutPlaceRepository = AppDataSource.getRepository(WorkoutPlace);
     this.userRepository = AppDataSource.getRepository(User);
     this.dataSource = AppDataSource;
     this.commentService = commentService || new CommentService();
-    // ExerciseService를 주입하여 WorkoutDetailService 생성
-    const exerciseSvc = exerciseService || new ExerciseService();
     this.workoutDetailService =
-      workoutDetailService || new WorkoutDetailService(exerciseSvc);
+      workoutDetailService || new WorkoutDetailService();
     this.workoutLikeService = workoutLikeService || new WorkoutLikeService();
   }
 
@@ -105,7 +101,7 @@ export class WorkoutOfTheDayService {
       // 1. WorkoutOfTheDay 생성
       const workoutOfTheDay = queryRunner.manager.create(WorkoutOfTheDay, {
         user,
-        workoutPlace: workoutPlace || undefined,
+        workoutPlace: workoutPlace || null,
         recordDate: new Date(saveWorkoutDTO.workoutData.date),
         workoutDiary: saveWorkoutDTO.workoutData.diary,
         workoutPhoto: photoPath,
@@ -121,10 +117,19 @@ export class WorkoutOfTheDayService {
         );
 
       // 3. mainExerciseType 설정 및 업데이트
-      if (mainExerciseType) {
-        workoutOfTheDay.mainExerciseType = mainExerciseType;
+      // Promise인 경우 해결
+      const resolvedMainExerciseType =
+        typeof mainExerciseType === "object" &&
+        mainExerciseType !== null &&
+        "then" in mainExerciseType
+          ? await (mainExerciseType as Promise<string>)
+          : mainExerciseType;
+
+      if (resolvedMainExerciseType) {
+        workoutOfTheDay.mainExerciseType = resolvedMainExerciseType;
         await queryRunner.manager.save(workoutOfTheDay);
       }
+
       await queryRunner.commitTransaction();
       return { workoutId: workoutOfTheDay.workoutOfTheDaySeq };
     } catch (error) {
@@ -182,10 +187,6 @@ export class WorkoutOfTheDayService {
     nextCursor: string | null;
     limit: number;
   }> {
-    console.log(
-      `[WorkoutOfTheDayService] 닉네임 ${nickname}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
-    );
-
     // 유효성 검사 - 기본값 설정
     if (limit < 1) limit = 12;
 
@@ -202,12 +203,7 @@ export class WorkoutOfTheDayService {
         if (isNaN(cursorDate.getTime()) || isNaN(cursorSeq)) {
           throw new Error("Invalid cursor format");
         }
-
-        console.log(
-          `[WorkoutOfTheDayService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
-        );
       } catch (error) {
-        console.error("커서 파싱 오류:", error);
         cursorDate = null;
         cursorSeq = null;
       }
@@ -246,9 +242,6 @@ export class WorkoutOfTheDayService {
 
     // 총 레코드 수 가져오기 (디버깅용)
     const totalCount = await workoutsQuery.getCount();
-    console.log(
-      `[WorkoutOfTheDayService] 조건에 맞는 총 레코드 수: ${totalCount}`
-    );
 
     const workouts = await workoutsQuery.take(limit + 1).getMany();
 
@@ -280,10 +273,6 @@ export class WorkoutOfTheDayService {
           commentCount,
         };
       })
-    );
-
-    console.log(
-      `[WorkoutOfTheDayService] 조회 결과 - 결과 개수: ${workoutsWithCommentCount.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
     );
 
     return { workouts: workoutsWithCommentCount, nextCursor, limit };
@@ -565,10 +554,6 @@ export class WorkoutOfTheDayService {
         relations: ["workoutDetails"],
       });
 
-      console.log(
-        `Found ${workoutsToDelete.length} old deleted workouts to clean up.`
-      );
-
       if (workoutsToDelete.length === 0) {
         return { deletedCount: 0, deletedPhotos: 0, errors: [] };
       }
@@ -614,9 +599,6 @@ export class WorkoutOfTheDayService {
 
         await queryRunner.commitTransaction();
 
-        console.log(
-          `Successfully deleted ${deleteResult.affected} old workout records.`
-        );
         return {
           deletedCount: deleteResult.affected || 0,
           deletedPhotos,
@@ -673,10 +655,6 @@ export class WorkoutOfTheDayService {
     };
     limit: number;
   }> {
-    console.log(
-      `[WorkoutOfTheDayService] 장소 ID ${placeSeq}의 운동 기록 조회 시작 - 커서: ${cursor}, 리밋: ${limit}`
-    );
-
     if (limit < 1) limit = 12;
 
     const place = await this.workoutPlaceRepository.findOne({
@@ -704,12 +682,7 @@ export class WorkoutOfTheDayService {
         if (isNaN(cursorDate.getTime()) || isNaN(cursorSeq)) {
           throw new Error("Invalid cursor format");
         }
-
-        console.log(
-          `[WorkoutOfTheDayService] 커서 파싱 결과 - 날짜: ${cursorDate.toISOString()}, seq: ${cursorSeq}`
-        );
       } catch (error) {
-        console.error("커서 파싱 오류:", error);
         cursorDate = null;
         cursorSeq = null;
       }
@@ -747,9 +720,6 @@ export class WorkoutOfTheDayService {
 
     // 총 레코드 수 가져오기 (디버깅용)
     const totalCount = await query.getCount();
-    console.log(
-      `[WorkoutOfTheDayService] 조건에 맞는 총 레코드 수: ${totalCount}`
-    );
 
     const workouts = await query.take(limit + 1).getMany();
 
@@ -780,10 +750,6 @@ export class WorkoutOfTheDayService {
           commentCount,
         };
       })
-    );
-
-    console.log(
-      `[WorkoutOfTheDayService] 조회 결과 - 결과 개수: ${workoutsWithCommentCount.length}, 다음 커서: ${nextCursor}, 더 있음: ${hasNextPage}`
     );
 
     return {

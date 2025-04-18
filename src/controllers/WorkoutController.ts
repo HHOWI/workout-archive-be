@@ -39,9 +39,8 @@ export class WorkoutController {
     workoutCalendarService?: WorkoutCalendarService
   ) {
     // 서비스 생성 시 의존성 주입 체인 구성
-    const exerciseService = new ExerciseService();
     const commentService = new CommentService();
-    const workoutDetailService = new WorkoutDetailService(exerciseService);
+    const workoutDetailService = new WorkoutDetailService();
     const workoutLikeService = new WorkoutLikeService();
     const userService = new UserService();
 
@@ -50,8 +49,7 @@ export class WorkoutController {
       new WorkoutOfTheDayService(
         commentService,
         workoutDetailService,
-        workoutLikeService,
-        exerciseService
+        workoutLikeService
       );
     this.workoutCalendarService =
       workoutCalendarService || new WorkoutCalendarService(userService);

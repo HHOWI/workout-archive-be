@@ -14,13 +14,7 @@ import {
 } from "../dtos/CommentDTO";
 import { NotificationType } from "../entities/Notification";
 import { NotificationService } from "./NotificationService";
-import {
-  FindOptionsWhere,
-  IsNull,
-  Repository,
-  LessThan,
-  MoreThan,
-} from "typeorm";
+import { FindOptionsWhere, IsNull, Repository, MoreThan } from "typeorm";
 import { CommentLikeService } from "./CommentLikeService";
 import { ErrorDecorator } from "../decorators/ErrorDecorator";
 
@@ -368,7 +362,7 @@ export class CommentService {
       );
     }
 
-    // 좋아요 정보 및 대댓글 정보를 포함하여 DTO 변환
+    // 좋아요 정보 및 대댓글 정보, 개수를 포함하여 DTO 변환
     const commentsWithLikesAndReplies: CommentResponseDTO[] = comments.map(
       (comment) => ({
         ...this.mapCommentToBaseDTO(comment),
@@ -383,6 +377,9 @@ export class CommentService {
                 : false,
             }))
           : [],
+        childCommentsCount: comment.childComments
+          ? comment.childComments.length
+          : 0,
       })
     );
 
@@ -574,6 +571,7 @@ export class CommentService {
       ...commentDTO,
       isLiked,
       childComments: childCommentsDTO,
+      childCommentsCount: childComments.length,
     };
   }
 
@@ -642,6 +640,7 @@ export class CommentService {
       childComments: repliesDTO,
       workoutOfTheDaySeq: parentComment.workoutOfTheDay.workoutOfTheDaySeq,
       targetReplySeq,
+      childCommentsCount: allReplies.length,
     };
   }
 
