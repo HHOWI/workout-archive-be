@@ -30,31 +30,26 @@ export class FeedController {
    */
   public getFeed = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        // 사용자 인증 정보 확인
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      // 사용자 인증 정보 확인
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        // 쿼리 파라미터 검증 (ValidationUtil 활용)
-        const feedQueryParams = ValidationUtil.validateQuery(
-          req,
-          FeedQuerySchema,
-          "잘못된 요청 파라미터입니다.",
-          "FeedController.getFeed"
-        );
+      // 쿼리 파라미터 검증 (ValidationUtil 활용)
+      const feedQueryParams = ValidationUtil.validateQuery(
+        req,
+        FeedQuerySchema,
+        "잘못된 요청 파라미터입니다.",
+        "FeedController.getFeed"
+      );
 
-        // 서비스 계층 호출
-        const feedResponse = await this.feedService.getFeed(
-          userSeq,
-          Number(feedQueryParams.limit),
-          feedQueryParams.cursor ? Number(feedQueryParams.cursor) : null
-        );
+      // 서비스 계층 호출
+      const feedResponse = await this.feedService.getFeed(
+        userSeq,
+        Number(feedQueryParams.limit),
+        feedQueryParams.cursor ? Number(feedQueryParams.cursor) : null
+      );
 
-        // 응답 반환
-        res.status(200).json(feedResponse);
-      } catch (error) {
-        // 전역 에러 핸들러에게 위임
-        throw error;
-      }
+      // 응답 반환
+      res.status(200).json(feedResponse);
     }
   );
 }

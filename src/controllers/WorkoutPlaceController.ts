@@ -25,7 +25,7 @@ export class WorkoutPlaceController {
    */
   private handleValidationError(error: ZodError, context: string): never {
     throw new CustomError(
-      "유효성 검사 실패",
+      error.errors[0].message,
       400,
       `WorkoutPlaceController.${context}`,
       error.errors.map((err) => ({
@@ -40,24 +40,10 @@ export class WorkoutPlaceController {
    */
   public getRecentWorkoutPlaces = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-        const recentPlaces =
-          await this.workoutPlaceService.getRecentWorkoutPlaces(userSeq);
-        res.status(200).json(recentPlaces);
-      } catch (error) {
-        if (error instanceof ZodError) {
-          this.handleValidationError(error, "getRecentWorkoutPlaces");
-        }
-        if (error instanceof CustomError) {
-          throw error;
-        }
-        throw new CustomError(
-          "최근 운동 장소 조회 중 오류가 발생했습니다.",
-          500,
-          "WorkoutPlaceController.getRecentWorkoutPlaces"
-        );
-      }
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const recentPlaces =
+        await this.workoutPlaceService.getRecentWorkoutPlaces(userSeq);
+      res.status(200).json(recentPlaces);
     }
   );
 
@@ -66,37 +52,22 @@ export class WorkoutPlaceController {
    */
   public getWorkoutPlaceDetail = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const workoutPlaceSeqResult = WorkoutPlaceSeqSchema.safeParse(
-          req.params.workoutPlaceSeq
-        );
+      const workoutPlaceSeqResult = WorkoutPlaceSeqSchema.safeParse(
+        req.params.workoutPlaceSeq
+      );
 
-        if (!workoutPlaceSeqResult.success) {
-          this.handleValidationError(
-            workoutPlaceSeqResult.error,
-            "getWorkoutPlaceDetail"
-          );
-        }
-
-        const placeDetail =
-          await this.workoutPlaceService.getWorkoutPlaceDetail(
-            workoutPlaceSeqResult.data
-          );
-
-        res.status(200).json(placeDetail);
-      } catch (error) {
-        if (error instanceof ZodError) {
-          this.handleValidationError(error, "getWorkoutPlaceDetail");
-        }
-        if (error instanceof CustomError) {
-          throw error;
-        }
-        throw new CustomError(
-          "운동 장소 상세 정보 조회 중 오류가 발생했습니다.",
-          500,
-          "WorkoutPlaceController.getWorkoutPlaceDetail"
+      if (!workoutPlaceSeqResult.success) {
+        this.handleValidationError(
+          workoutPlaceSeqResult.error,
+          "getWorkoutPlaceDetail"
         );
       }
+
+      const placeDetail = await this.workoutPlaceService.getWorkoutPlaceDetail(
+        workoutPlaceSeqResult.data
+      );
+
+      res.status(200).json(placeDetail);
     }
   );
 }

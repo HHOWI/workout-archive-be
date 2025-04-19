@@ -46,9 +46,10 @@ app.use(
   })
 );
 
+app.use("/uploads", processImage);
+
 app.use("/uploads/profiles", express.static(Paths.PROFILE_UPLOAD_PATH));
 app.use("/uploads/posts", express.static(Paths.POST_UPLOAD_PATH));
-app.use("/uploads", processImage);
 
 app.use("/users", UserRouter);
 app.use("/exercises", ExerciseRouter);

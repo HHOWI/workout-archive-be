@@ -14,8 +14,6 @@ export const deleteImage = (imagePath: string): void => {
         500,
         "deleteImage"
       );
-    } else {
-      console.log(`이미지 삭제 성공: ${fullPath}`);
     }
   });
 };

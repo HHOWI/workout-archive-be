@@ -17,24 +17,34 @@ export const processImage = async (
   next: NextFunction
 ) => {
   try {
-    // 이미지 경로가 /uploads/로 시작하는 경우에만 처리
-    if (!req.path.startsWith("/uploads/")) {
+    // 경로 시작 검사 제거 (미들웨어가 이미 /uploads에 등록되어 있음)
+
+    // 쿼리 파라미터가 없으면 다음 미들웨어(express.static)로 요청 전달
+    const hasQueryParams =
+      req.query.width ||
+      req.query.height ||
+      req.query.quality ||
+      req.query.format;
+
+    if (!hasQueryParams) {
       return next();
     }
 
     // 요청 경로에 따라 적절한 업로드 경로 결정
     let basePath;
-    let urlPath = req.path.slice(9); // '/uploads/' 제거 후 경로
+    let urlPath = req.path; // 전체 경로 사용
 
-    if (req.path.startsWith("/uploads/profiles/")) {
+    if (req.path.startsWith("/profiles/")) {
       basePath = Paths.PROFILE_UPLOAD_PATH;
-      urlPath = urlPath.slice(9); // 'profiles/' 제거
-    } else if (req.path.startsWith("/uploads/posts/")) {
+      urlPath = req.path.slice(10); // '/profiles/' 제거
+    } else if (req.path.startsWith("/posts/")) {
       basePath = Paths.POST_UPLOAD_PATH;
-      urlPath = urlPath.slice(6); // 'posts/' 제거
+      urlPath = req.path.slice(7); // '/posts/' 제거
     } else {
-      // 기본 경로 (하위 호환성 유지)
-      basePath = Paths.PROFILE_UPLOAD_PATH;
+      // 기본 경로 (하위 호환성 유지 또는 다른 처리 필요)
+      // 이 경우는 일반적으로 발생하지 않아야 함 (/uploads/ 하위 경로가 아니면 static 미들웨어가 처리)
+      console.warn(`처리할 수 없는 이미지 경로 요청: ${req.path}`);
+      return next(); // 알 수 없는 경로는 처리하지 않고 넘김
     }
 
     const imagePath = path.join(basePath, urlPath);
@@ -95,12 +105,26 @@ export const processImage = async (
         pipeline = pipeline.jpeg({ quality });
     }
 
-    // 이미지 처리 및 캐시 저장
-    await pipeline.toFile(cachePath);
+    try {
+      // 이미지 처리 및 캐시 저장
+      await pipeline.toFile(cachePath);
 
-    // 처리된 이미지 응답
-    res.sendFile(cachePath);
+      // 처리된 이미지 응답
+      res.setHeader("Content-Type", `image/${format}`);
+      res.setHeader("X-Image-Processed", "true");
+      return res.sendFile(cachePath);
+    } catch (err) {
+      console.error("이미지 처리 중 오류 발생:", err);
+      console.error(`원본 이미지 경로: ${imagePath}, 캐시 경로: ${cachePath}`);
+      console.error(
+        `요청 크기: ${width}x${height}, 포맷: ${format}, 품질: ${quality}`
+      );
+
+      // 실패 시 원본 파일로 대체하여 응답
+      return next();
+    }
   } catch (error) {
-    next(error);
+    console.error("이미지 프로세서 전체 오류:", error);
+    return next(error);
   }
 };

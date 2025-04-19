@@ -324,7 +324,7 @@ export class CommentService {
   ): Promise<CommentListResponseDTO> {
     const skip = (page - 1) * limit;
 
-    // 부모 댓글만 페이징하여 조회 (대댓글 포함)
+    // 부모 댓글만 페이징하여 조회 (대댓글 포함하지 않음)
     const [comments, totalCount] = await this.commentRepository.findAndCount({
       where: {
         workoutOfTheDay: { workoutOfTheDaySeq },
@@ -332,8 +332,7 @@ export class CommentService {
       },
       relations: [
         "user",
-        "childComments", // 자식 댓글 관계 로드
-        "childComments.user", // 자식 댓글의 사용자 정보 로드
+        // 대댓글 정보는 별도로 필요할 때만 로드하도록 수정
       ],
       order: {
         commentCreatedAt: "ASC",
@@ -342,49 +341,45 @@ export class CommentService {
       take: limit,
     });
 
-    // 모든 댓글(부모 + 자식) ID 추출
-    const allCommentIds: number[] = [];
-    comments.forEach((comment) => {
-      allCommentIds.push(comment.workoutCommentSeq);
-      if (comment.childComments) {
-        comment.childComments.forEach((child) => {
-          allCommentIds.push(child.workoutCommentSeq);
-        });
-      }
+    // 모든 부모 댓글 ID 추출
+    const commentIds = comments.map((comment) => comment.workoutCommentSeq);
+
+    // 각 댓글별 대댓글 개수 조회
+    const childCountsPromises = commentIds.map(async (commentId) => {
+      const count = await this.commentRepository.count({
+        where: {
+          parentComment: { workoutCommentSeq: commentId },
+        },
+      });
+      return { commentId, count };
     });
+
+    const childCounts = await Promise.all(childCountsPromises);
+    const childCountMap = Object.fromEntries(
+      childCounts.map((item) => [item.commentId, item.count])
+    );
 
     // 사용자가 제공된 경우, 일괄적으로 좋아요 정보 조회
     let likeStatusMap: Record<number, boolean> = {};
-    if (userSeq && allCommentIds.length > 0) {
+    if (userSeq && commentIds.length > 0) {
       likeStatusMap = await this.commentLikeService.getBulkLikeStatus(
         userSeq,
-        allCommentIds
+        commentIds
       );
     }
 
-    // 좋아요 정보 및 대댓글 정보, 개수를 포함하여 DTO 변환
-    const commentsWithLikesAndReplies: CommentResponseDTO[] = comments.map(
-      (comment) => ({
-        ...this.mapCommentToBaseDTO(comment),
-        isLiked: userSeq
-          ? likeStatusMap[comment.workoutCommentSeq] || false
-          : false,
-        childComments: comment.childComments
-          ? comment.childComments.map((child) => ({
-              ...this.mapCommentToBaseDTO(child),
-              isLiked: userSeq
-                ? likeStatusMap[child.workoutCommentSeq] || false
-                : false,
-            }))
-          : [],
-        childCommentsCount: comment.childComments
-          ? comment.childComments.length
-          : 0,
-      })
-    );
+    // 댓글 정보 및 대댓글 개수를 포함하여 DTO 변환
+    const commentsWithLikes: CommentResponseDTO[] = comments.map((comment) => ({
+      ...this.mapCommentToBaseDTO(comment),
+      isLiked: userSeq
+        ? likeStatusMap[comment.workoutCommentSeq] || false
+        : false,
+      childComments: [], // 대댓글 내용은 포함하지 않음
+      childCommentsCount: childCountMap[comment.workoutCommentSeq] || 0,
+    }));
 
     return {
-      comments: commentsWithLikesAndReplies,
+      comments: commentsWithLikes,
       totalCount,
     };
   }
@@ -652,7 +647,10 @@ export class CommentService {
     workoutOfTheDaySeq: number
   ): Promise<number> {
     return this.commentRepository.count({
-      where: { workoutOfTheDay: { workoutOfTheDaySeq } },
+      where: {
+        workoutOfTheDay: { workoutOfTheDaySeq },
+        parentComment: IsNull(), // 부모 댓글만 카운트하도록 조건 추가
+      },
     });
   }
 }

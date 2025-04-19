@@ -9,6 +9,7 @@ import {
   WorkoutLikeCountDTO,
 } from "../dtos/WorkoutLikeDTO";
 import asyncHandler from "express-async-handler";
+import { ControllerUtil } from "../utils/controllerUtil";
 
 /**
  * 워크아웃 좋아요 관련 컨트롤러
@@ -30,7 +31,7 @@ export class WorkoutLikeController {
    */
   private handleValidationError(error: ZodError, context: string): never {
     throw new CustomError(
-      "유효성 검사 실패",
+      error.errors[0].message,
       400,
       `WorkoutLikeController.${context}`,
       error.errors.map((err) => ({
@@ -45,45 +46,26 @@ export class WorkoutLikeController {
    */
   public toggleWorkoutLike = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = req.user?.userSeq;
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        if (!userSeq) {
-          throw new CustomError(
-            "인증되지 않은 사용자입니다.",
-            401,
-            "WorkoutLikeController.toggleWorkoutLike"
-          );
-        }
+      const workoutOfTheDaySeqResult = SeqSchema.safeParse(
+        req.params.workoutOfTheDaySeq
+      );
 
-        const workoutOfTheDaySeqResult = SeqSchema.safeParse(
-          req.params.workoutOfTheDaySeq
+      if (!workoutOfTheDaySeqResult.success) {
+        this.handleValidationError(
+          workoutOfTheDaySeqResult.error,
+          "toggleWorkoutLike"
+        );
+      }
+
+      const result: WorkoutLikeResponseDTO =
+        await this.workoutLikeService.toggleWorkoutLike(
+          userSeq,
+          workoutOfTheDaySeqResult.data
         );
 
-        if (!workoutOfTheDaySeqResult.success) {
-          this.handleValidationError(
-            workoutOfTheDaySeqResult.error,
-            "toggleWorkoutLike"
-          );
-        }
-
-        const result: WorkoutLikeResponseDTO =
-          await this.workoutLikeService.toggleWorkoutLike(
-            userSeq,
-            workoutOfTheDaySeqResult.data
-          );
-
-        res.status(200).json(result);
-      } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "WorkoutLikeController.toggleWorkoutLike"
-          );
-        }
-        throw error;
-      }
+      res.status(200).json(result);
     }
   );
 
@@ -92,44 +74,26 @@ export class WorkoutLikeController {
    */
   public getWorkoutLikeStatus = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeqResult = SeqSchema.safeParse(req.user?.userSeq);
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        if (!userSeqResult.success) {
-          this.handleValidationError(
-            userSeqResult.error,
-            "getWorkoutLikeStatus"
-          );
-        }
+      const workoutOfTheDaySeqResult = SeqSchema.safeParse(
+        req.params.workoutOfTheDaySeq
+      );
 
-        const workoutOfTheDaySeqResult = SeqSchema.safeParse(
-          req.params.workoutOfTheDaySeq
+      if (!workoutOfTheDaySeqResult.success) {
+        this.handleValidationError(
+          workoutOfTheDaySeqResult.error,
+          "getWorkoutLikeStatus"
         );
-
-        if (!workoutOfTheDaySeqResult.success) {
-          this.handleValidationError(
-            workoutOfTheDaySeqResult.error,
-            "getWorkoutLikeStatus"
-          );
-        }
-
-        const isLiked = await this.workoutLikeService.getWorkoutLikeStatus(
-          userSeqResult.data,
-          workoutOfTheDaySeqResult.data
-        );
-
-        const response: WorkoutLikeStatusDTO = { isLiked };
-        res.status(200).json(response);
-      } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "WorkoutLikeController.getWorkoutLikeStatus"
-          );
-        }
-        throw error;
       }
+
+      const isLiked = await this.workoutLikeService.getWorkoutLikeStatus(
+        userSeq,
+        workoutOfTheDaySeqResult.data
+      );
+
+      const response: WorkoutLikeStatusDTO = { isLiked };
+      res.status(200).json(response);
     }
   );
 
@@ -138,34 +102,23 @@ export class WorkoutLikeController {
    */
   public getWorkoutLikeCount = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const workoutOfTheDaySeqResult = SeqSchema.safeParse(
-          req.params.workoutOfTheDaySeq
+      const workoutOfTheDaySeqResult = SeqSchema.safeParse(
+        req.params.workoutOfTheDaySeq
+      );
+
+      if (!workoutOfTheDaySeqResult.success) {
+        this.handleValidationError(
+          workoutOfTheDaySeqResult.error,
+          "getWorkoutLikeCount"
         );
-
-        if (!workoutOfTheDaySeqResult.success) {
-          this.handleValidationError(
-            workoutOfTheDaySeqResult.error,
-            "getWorkoutLikeCount"
-          );
-        }
-
-        const likeCount = await this.workoutLikeService.getWorkoutLikeCount(
-          workoutOfTheDaySeqResult.data
-        );
-
-        const response: WorkoutLikeCountDTO = { likeCount };
-        res.status(200).json(response);
-      } catch (error) {
-        if (error instanceof ZodError) {
-          throw new CustomError(
-            error.errors[0].message,
-            400,
-            "WorkoutLikeController.getWorkoutLikeCount"
-          );
-        }
-        throw error;
       }
+
+      const likeCount = await this.workoutLikeService.getWorkoutLikeCount(
+        workoutOfTheDaySeqResult.data
+      );
+
+      const response: WorkoutLikeCountDTO = { likeCount };
+      res.status(200).json(response);
     }
   );
 }

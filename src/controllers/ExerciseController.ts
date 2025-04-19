@@ -2,8 +2,8 @@ import { Request, Response } from "express";
 import { ExerciseService } from "../services/ExerciseService";
 import asyncHandler from "express-async-handler";
 import { CustomError } from "../utils/customError";
-import { SeqSchema } from "../schema/BaseSchema";
 import { ExerciseSeqSchema } from "../schema/ExerciseSchema";
+import { ZodError } from "zod";
 
 export class ExerciseController {
   private exerciseService: ExerciseService;
@@ -13,16 +13,17 @@ export class ExerciseController {
   }
 
   /**
-   * 에러 처리 헬퍼 메서드
+   * Zod 유효성 검사 에러 처리 헬퍼 메서드
    */
-  private handleError(error: unknown, context: string): never {
-    if (error instanceof CustomError) {
-      throw error;
-    }
+  private handleValidationError(error: ZodError, context: string): never {
     throw new CustomError(
-      "운동 관련 요청 처리 중 오류가 발생했습니다.",
-      500,
-      `ExerciseController.${context}`
+      "유효성 검사 실패",
+      400,
+      `ExerciseController.${context}`,
+      error.errors.map((err) => ({
+        message: err.message,
+        path: err.path.map((p) => p.toString()),
+      }))
     );
   }
 
@@ -31,15 +32,11 @@ export class ExerciseController {
    */
   public getAllExercises = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const exercises = await this.exerciseService.findAllExercise();
+      const exercises = await this.exerciseService.findAllExercise();
 
-        // 캐시 유효 시간 설정 (1시간)
-        res.setHeader("Cache-Control", "public, max-age=3600");
-        res.status(200).json(exercises);
-      } catch (error) {
-        this.handleError(error, "getAllExercises");
-      }
+      // 캐시 유효 시간 설정 (1시간)
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.status(200).json(exercises);
     }
   );
 
@@ -48,16 +45,12 @@ export class ExerciseController {
    */
   public getGroupedExercises = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const groupedExercises =
-          await this.exerciseService.findGroupedExercises();
+      const groupedExercises =
+        await this.exerciseService.findGroupedExercises();
 
-        // 캐시 유효 시간 설정 (1시간)
-        res.setHeader("Cache-Control", "public, max-age=3600");
-        res.status(200).json(groupedExercises);
-      } catch (error) {
-        this.handleError(error, "getGroupedExercises");
-      }
+      // 캐시 유효 시간 설정 (1시간)
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.status(200).json(groupedExercises);
     }
   );
 
@@ -66,16 +59,16 @@ export class ExerciseController {
    */
   public getExerciseById = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const exerciseSeq = ExerciseSeqSchema.parse(req.params.exerciseSeq);
-        const exercise = await this.exerciseService.findExerciseById(
-          exerciseSeq
-        );
-
-        res.status(200).json(exercise);
-      } catch (error) {
-        this.handleError(error, "getExerciseById");
+      // Zod 유효성 검사
+      const result = ExerciseSeqSchema.safeParse(req.params.exerciseSeq);
+      if (!result.success) {
+        this.handleValidationError(result.error, "getExerciseById");
       }
+      const exerciseSeq = result.data;
+
+      const exercise = await this.exerciseService.findExerciseById(exerciseSeq);
+
+      res.status(200).json(exercise);
     }
   );
 }

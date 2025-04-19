@@ -5,11 +5,7 @@ import { Paths } from "../config/path";
 
 // 업로드 디렉토리 생성 함수
 const createUploadDir = async (uploadPath: string) => {
-  try {
-    await fs.access(uploadPath);
-  } catch {
-    await fs.mkdir(uploadPath, { recursive: true });
-  }
+  await fs.mkdir(uploadPath, { recursive: true });
 };
 
 // 공통 multer 설정

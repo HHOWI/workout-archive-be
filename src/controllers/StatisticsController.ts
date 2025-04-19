@@ -28,31 +28,24 @@ export class StatisticsController {
    */
   public getBodyLogStats = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        // 유효성 검사 (ValidationService 사용)
-        // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
-        const filter = this.validationService.validateFilter(
-          req.query,
-          BodyLogStatsFilterSchema,
-          "필터 옵션 유효성 검사 실패",
-          "StatisticsController.getBodyLogStats"
-        ) as BodyLogStatsFilterDTO;
+      // 유효성 검사 (ValidationService 사용)
+      // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
+      const filter = this.validationService.validateFilter(
+        req.query,
+        BodyLogStatsFilterSchema,
+        "필터 옵션 유효성 검사 실패",
+        "StatisticsController.getBodyLogStats"
+      ) as BodyLogStatsFilterDTO;
 
-        // 통계 서비스 호출
-        const stats = await this.statisticsService.getBodyLogStats(
-          userSeq,
-          filter
-        );
+      // 통계 서비스 호출
+      const stats = await this.statisticsService.getBodyLogStats(
+        userSeq,
+        filter
+      );
 
-        res.status(200).json(stats);
-      } catch (error) {
-        this.validationService.handleError(
-          error,
-          "StatisticsController.getBodyLogStats"
-        );
-      }
+      res.status(200).json(stats);
     }
   );
 
@@ -61,35 +54,29 @@ export class StatisticsController {
    */
   public getExerciseWeightStats = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        // 쿼리 파라미터 전처리
-        const preprocessedQuery =
-          this.validationService.preprocessExerciseQuery(req.query);
+      // 쿼리 파라미터 전처리
+      const preprocessedQuery = this.validationService.preprocessExerciseQuery(
+        req.query
+      );
 
-        // 유효성 검사 (ValidationService 사용)
-        // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
-        const filter = this.validationService.validateFilter(
-          preprocessedQuery,
-          ExerciseWeightStatsFilterSchema,
-          "필터 옵션 유효성 검사 실패",
-          "StatisticsController.getExerciseWeightStats"
-        ) as ExerciseWeightStatsFilterDTO;
+      // 유효성 검사 (ValidationService 사용)
+      // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
+      const filter = this.validationService.validateFilter(
+        preprocessedQuery,
+        ExerciseWeightStatsFilterSchema,
+        "필터 옵션 유효성 검사 실패",
+        "StatisticsController.getExerciseWeightStats"
+      ) as ExerciseWeightStatsFilterDTO;
 
-        // 통계 서비스 호출
-        const stats = await this.statisticsService.getExerciseWeightStats(
-          userSeq,
-          filter
-        );
+      // 통계 서비스 호출
+      const stats = await this.statisticsService.getExerciseWeightStats(
+        userSeq,
+        filter
+      );
 
-        res.status(200).json(stats);
-      } catch (error) {
-        this.validationService.handleError(
-          error,
-          "StatisticsController.getExerciseWeightStats"
-        );
-      }
+      res.status(200).json(stats);
     }
   );
 
@@ -98,35 +85,29 @@ export class StatisticsController {
    */
   public getCardioStats = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        // 쿼리 파라미터 전처리
-        const preprocessedQuery =
-          this.validationService.preprocessExerciseQuery(req.query);
+      // 쿼리 파라미터 전처리
+      const preprocessedQuery = this.validationService.preprocessExerciseQuery(
+        req.query
+      );
 
-        // 유효성 검사 (ValidationService 사용)
-        // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
-        const filter = this.validationService.validateFilter(
-          preprocessedQuery,
-          CardioStatsFilterSchema,
-          "필터 옵션 유효성 검사 실패",
-          "StatisticsController.getCardioStats"
-        ) as CardioStatsFilterDTO;
+      // 유효성 검사 (ValidationService 사용)
+      // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
+      const filter = this.validationService.validateFilter(
+        preprocessedQuery,
+        CardioStatsFilterSchema,
+        "필터 옵션 유효성 검사 실패",
+        "StatisticsController.getCardioStats"
+      ) as CardioStatsFilterDTO;
 
-        // 통계 서비스 호출
-        const stats = await this.statisticsService.getCardioStats(
-          userSeq,
-          filter
-        );
+      // 통계 서비스 호출
+      const stats = await this.statisticsService.getCardioStats(
+        userSeq,
+        filter
+      );
 
-        res.status(200).json(stats);
-      } catch (error) {
-        this.validationService.handleError(
-          error,
-          "StatisticsController.getCardioStats"
-        );
-      }
+      res.status(200).json(stats);
     }
   );
 
@@ -135,31 +116,24 @@ export class StatisticsController {
    */
   public getBodyPartVolumeStats = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userSeq = ControllerUtil.getAuthenticatedUserId(req);
+      const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-        // 유효성 검사 (ValidationService 사용)
-        // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
-        const filter = this.validationService.validateFilter(
-          req.query,
-          BodyPartVolumeStatsFilterSchema,
-          "필터 옵션 유효성 검사 실패",
-          "StatisticsController.getBodyPartVolumeStats"
-        ) as BodyPartVolumeStatsFilterDTO;
+      // 유효성 검사 (ValidationService 사용)
+      // Zod 스키마에 의해 기본값이 적용되므로, 타입 단언 사용
+      const filter = this.validationService.validateFilter(
+        req.query,
+        BodyPartVolumeStatsFilterSchema,
+        "필터 옵션 유효성 검사 실패",
+        "StatisticsController.getBodyPartVolumeStats"
+      ) as BodyPartVolumeStatsFilterDTO;
 
-        // 통계 서비스 호출
-        const stats = await this.statisticsService.getBodyPartVolumeStats(
-          userSeq,
-          filter
-        );
+      // 통계 서비스 호출
+      const stats = await this.statisticsService.getBodyPartVolumeStats(
+        userSeq,
+        filter
+      );
 
-        res.status(200).json(stats);
-      } catch (error) {
-        this.validationService.handleError(
-          error,
-          "StatisticsController.getBodyPartVolumeStats"
-        );
-      }
+      res.status(200).json(stats);
     }
   );
 }

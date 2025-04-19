@@ -11,48 +11,43 @@ export class UserController {
   private userService = new UserService();
 
   /**
-   * 공통 에러 핸들러 함수
+   * Zod 유효성 검사 에러 처리 헬퍼 메서드
    */
-  private handleError(error: unknown, context: string): never {
-    if (error instanceof ZodError) {
-      throw new CustomError(
-        error.errors[0].message,
-        400,
-        `UserController.${context}`
-      );
-    }
-    if (error instanceof Error) {
-      throw new CustomError(error.message, 400, `UserController.${context}`);
-    }
+  private handleZodError(error: ZodError, context: string): never {
     throw new CustomError(
-      "요청 처리 중 오류가 발생했습니다.",
+      error.errors[0].message, // Zod 에러 메시지 사용
       400,
-      `UserController.${context}`
+      `UserController.${context}`,
+      error.errors.map((err) => ({
+        // 상세 에러 정보 포함
+        message: err.message,
+        path: err.path.map((p) => p.toString()),
+      }))
     );
   }
 
   // POST /users/login
   public loginUser = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const loginDTO: LoginDTO = LoginSchema.parse(req.body);
-
-        const { token, userDTO: responseUserDTO } =
-          await this.userService.loginUser(loginDTO);
-
-        // 쿠키에 토큰 저장
-        res.cookie("auth_token", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
-          maxAge: Number(process.env.MAX_COOKIE_AGE),
-          path: "/",
-        });
-
-        res.json(responseUserDTO);
-      } catch (error) {
-        this.handleError(error, "loginUser");
+      const result = LoginSchema.safeParse(req.body);
+      if (!result.success) {
+        this.handleZodError(result.error, "loginUser");
       }
+      const loginDTO: LoginDTO = result.data;
+
+      const { token, userDTO: responseUserDTO } =
+        await this.userService.loginUser(loginDTO);
+
+      // 쿠키에 토큰 저장
+      res.cookie("auth_token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: Number(process.env.MAX_COOKIE_AGE),
+        path: "/",
+      });
+
+      res.json(responseUserDTO);
     }
   );
 
@@ -164,27 +159,16 @@ export class UserController {
   // GET /users/profile-info/:userNickname (통합 프로필 정보 조회)
   public getProfileInfo = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      try {
-        const userNickname = req.params.userNickname;
-        // 로그인한 사용자인 경우 사용자 ID 전달, 아니면 null
-        const loggedInUserSeq = req.user ? req.user.userSeq : null;
+      const userNickname = req.params.userNickname;
+      // 로그인한 사용자인 경우 사용자 ID 전달, 아니면 null
+      const loggedInUserSeq = req.user ? req.user.userSeq : null;
 
-        const profileInfo = await this.userService.getProfileInfo(
-          userNickname,
-          loggedInUserSeq
-        );
+      const profileInfo = await this.userService.getProfileInfo(
+        userNickname,
+        loggedInUserSeq
+      );
 
-        res.json(profileInfo);
-      } catch (error) {
-        if (error instanceof CustomError) {
-          throw error;
-        }
-        throw new CustomError(
-          "프로필 정보 조회 중 오류가 발생했습니다.",
-          500,
-          "UserController.getProfileInfo"
-        );
-      }
+      res.json(profileInfo);
     }
   );
 }
