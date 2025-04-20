@@ -204,8 +204,8 @@ export const BodyPartVolumeStatsFilterSchema = z.object({
 
 // 월별 운동 기록 조회 스키마
 export const MonthlyWorkoutSchema = z.object({
-  year: z.number().int().min(2000).max(2100),
-  month: z.number().int().min(1).max(12),
+  year: z.coerce.number().int().min(2000).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
 });
 
 // 월별 운동 통계 응답 스키마

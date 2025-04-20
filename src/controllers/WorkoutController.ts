@@ -10,7 +10,6 @@ import {
 import { UserNicknameSchema } from "../schema/UserSchema";
 import { SeqSchema } from "../schema/BaseSchema";
 import { ControllerUtil } from "../utils/controllerUtil";
-import { ZodError } from "zod";
 import {
   SaveWorkoutDTO,
   DateCursorPaginationDTO,
@@ -24,6 +23,7 @@ import { WorkoutDetailService } from "../services/WorkoutDetailService";
 import { WorkoutLikeService } from "../services/WorkoutLikeService";
 import { ExerciseService } from "../services/ExerciseService";
 import { UserService } from "../services/UserService";
+import { ValidationUtil } from "../utils/validationUtil";
 
 export class WorkoutController {
   private workoutOfTheDayService: WorkoutOfTheDayService;
@@ -56,21 +56,6 @@ export class WorkoutController {
   }
 
   /**
-   * Zod 유효성 검사 에러 처리 헬퍼 메서드
-   */
-  private handleValidationError(error: ZodError, context: string): never {
-    throw new CustomError(
-      "유효성 검사 실패",
-      400,
-      `WorkoutController.${context}`,
-      error.errors.map((err) => ({
-        message: err.message,
-        path: err.path.map((p) => p.toString()),
-      }))
-    );
-  }
-
-  /**
    * 운동 기록 저장 (인증 필요)
    */
   public saveWorkoutRecord = asyncHandler(
@@ -88,13 +73,17 @@ export class WorkoutController {
         "placeInfo"
       );
 
-      // Zod 유효성 검사
-      const result = SaveWorkoutSchema.safeParse({ workoutData, placeInfo });
-      if (!result.success) {
-        this.handleValidationError(result.error, "saveWorkoutRecord");
-      }
+      // Zod 유효성 검사 (ValidationUtil 사용)
+      const validatedData = ValidationUtil.validateCustom(
+        { workoutData, placeInfo },
+        SaveWorkoutSchema,
+        "유효성 검사 실패",
+        "WorkoutController.saveWorkoutRecord"
+      );
 
-      const saveWorkoutDTO: SaveWorkoutDTO = result.data;
+      // 명시적 타입 캐스팅으로 타입 호환성 문제 해결
+      const saveWorkoutDTO: SaveWorkoutDTO = validatedData as SaveWorkoutDTO;
+
       const saveResult = await this.workoutOfTheDayService.saveWorkoutRecord(
         userSeq,
         saveWorkoutDTO,
@@ -113,29 +102,24 @@ export class WorkoutController {
    */
   public getWorkoutRecordsByNickname = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const nicknameResult = UserNicknameSchema.safeParse(req.params.nickname);
-      if (!nicknameResult.success) {
-        this.handleValidationError(
-          nicknameResult.error,
-          "getWorkoutRecordsByNickname"
-        );
-      }
-      const nickname: string = nicknameResult.data;
+      const nickname = ValidationUtil.validatePathParam(
+        req,
+        "nickname",
+        UserNicknameSchema,
+        "잘못된 사용자 닉네임입니다.",
+        "WorkoutController.getWorkoutRecordsByNickname"
+      );
 
-      // 날짜 기반 커서 페이징 사용 (Zod 스키마가 string -> number 변환 처리 가정)
-      const paginationResult = DateCursorPaginationSchema.safeParse({
-        limit: req.query.limit,
-        cursor: req.query.cursor || null,
-      });
+      // 날짜 기반 커서 페이징 사용
+      const pagination = ValidationUtil.validateQuery(
+        req,
+        DateCursorPaginationSchema,
+        "페이징 파라미터가 유효하지 않습니다.",
+        "WorkoutController.getWorkoutRecordsByNickname"
+      );
 
-      if (!paginationResult.success) {
-        this.handleValidationError(
-          paginationResult.error,
-          "getWorkoutRecordsByNickname"
-        );
-      }
-
-      const { limit, cursor }: DateCursorPaginationDTO = paginationResult.data;
+      const limit = Number(pagination.limit);
+      const cursor = pagination.cursor;
 
       // 닉네임으로 사용자 정보와 운동 기록 가져오기
       const result =
@@ -154,12 +138,13 @@ export class WorkoutController {
    */
   public getWorkoutRecordDetail = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      // SeqSchema가 string -> number 변환 처리 가정 (e.g., z.coerce.number())
-      const seqResult = SeqSchema.safeParse(req.params.workoutOfTheDaySeq);
-      if (!seqResult.success) {
-        this.handleValidationError(seqResult.error, "getWorkoutRecordDetail");
-      }
-      const workoutOfTheDaySeq = seqResult.data;
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "WorkoutController.getWorkoutRecordDetail"
+      );
 
       // 로그인한 사용자 정보 (선택적)
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
@@ -180,14 +165,13 @@ export class WorkoutController {
    */
   public getWorkoutOfTheDayCountByNickname = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const nicknameResult = UserNicknameSchema.safeParse(req.params.nickname);
-      if (!nicknameResult.success) {
-        this.handleValidationError(
-          nicknameResult.error,
-          "getWorkoutOfTheDayCountByNickname"
-        );
-      }
-      const nickname: string = nicknameResult.data;
+      const nickname = ValidationUtil.validatePathParam(
+        req,
+        "nickname",
+        UserNicknameSchema,
+        "잘못된 사용자 닉네임입니다.",
+        "WorkoutController.getWorkoutOfTheDayCountByNickname"
+      );
 
       const count =
         await this.workoutOfTheDayService.getWorkoutOfTheDayCountByNickname(
@@ -217,12 +201,13 @@ export class WorkoutController {
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-      // SeqSchema가 string -> number 변환 처리 가정
-      const seqResult = SeqSchema.safeParse(req.params.workoutOfTheDaySeq);
-      if (!seqResult.success) {
-        this.handleValidationError(seqResult.error, "softDeleteWorkout");
-      }
-      const workoutOfTheDaySeq = seqResult.data;
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "WorkoutController.softDeleteWorkout"
+      );
 
       await this.workoutOfTheDayService.softDeleteWorkout(
         userSeq,
@@ -242,12 +227,13 @@ export class WorkoutController {
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-      // SeqSchema가 string -> number 변환 처리 가정
-      const seqResult = SeqSchema.safeParse(req.params.workoutOfTheDaySeq);
-      if (!seqResult.success) {
-        this.handleValidationError(seqResult.error, "updateWorkout");
-      }
-      const workoutOfTheDaySeq = seqResult.data;
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "WorkoutController.updateWorkout"
+      );
 
       // JSON 데이터 안전 파싱
       const updateData = ControllerUtil.parseJsonSafely(
@@ -255,13 +241,18 @@ export class WorkoutController {
         "updateData"
       );
 
-      // Zod 유효성 검사
-      const result = UpdateWorkoutSchema.safeParse(updateData);
-      if (!result.success) {
-        this.handleValidationError(result.error, "updateWorkout");
-      }
+      // Zod 유효성 검사 (ValidationUtil 사용)
+      const validatedData = ValidationUtil.validateCustom(
+        updateData,
+        UpdateWorkoutSchema,
+        "유효성 검사 실패",
+        "WorkoutController.updateWorkout"
+      );
 
-      const updateWorkoutDTO: UpdateWorkoutDTO = result.data;
+      // 명시적 타입 캐스팅으로 타입 호환성 문제 해결
+      const updateWorkoutDTO: UpdateWorkoutDTO =
+        validatedData as UpdateWorkoutDTO;
+
       const updatedWorkout = await this.workoutOfTheDayService.updateWorkout(
         userSeq,
         workoutOfTheDaySeq,
@@ -280,27 +271,24 @@ export class WorkoutController {
    */
   public getWorkoutsByPlace = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      // SeqSchema가 string -> number 변환 처리 가정
-      const seqResult = SeqSchema.safeParse(req.params.placeSeq);
-      if (!seqResult.success) {
-        this.handleValidationError(seqResult.error, "getWorkoutsByPlace");
-      }
-      const placeSeq = seqResult.data;
+      const placeSeq = ValidationUtil.validatePathParam(
+        req,
+        "placeSeq",
+        SeqSchema,
+        "잘못된 장소 ID입니다.",
+        "WorkoutController.getWorkoutsByPlace"
+      );
 
-      // 날짜 기반 커서 페이징 사용 (Zod 스키마가 string -> number 변환 처리 가정)
-      const paginationResult = DateCursorPaginationSchema.safeParse({
-        limit: req.query.limit,
-        cursor: req.query.cursor || null,
-      });
+      // 날짜 기반 커서 페이징 사용
+      const pagination = ValidationUtil.validateQuery(
+        req,
+        DateCursorPaginationSchema,
+        "페이징 파라미터가 유효하지 않습니다.",
+        "WorkoutController.getWorkoutsByPlace"
+      );
 
-      if (!paginationResult.success) {
-        this.handleValidationError(
-          paginationResult.error,
-          "getWorkoutsByPlace"
-        );
-      }
-
-      const { limit, cursor }: DateCursorPaginationDTO = paginationResult.data;
+      const limit = Number(pagination.limit);
+      const cursor = pagination.cursor;
 
       // 장소 ID로 운동 기록 조회
       const result =
@@ -319,15 +307,13 @@ export class WorkoutController {
    */
   public getWorkoutOfTheDayCountByPlaceId = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      // SeqSchema가 string -> number 변환 처리 가정
-      const seqResult = SeqSchema.safeParse(req.params.placeSeq);
-      if (!seqResult.success) {
-        this.handleValidationError(
-          seqResult.error,
-          "getWorkoutOfTheDayCountByPlaceId"
-        );
-      }
-      const placeSeq = seqResult.data;
+      const placeSeq = ValidationUtil.validatePathParam(
+        req,
+        "placeSeq",
+        SeqSchema,
+        "잘못된 장소 ID입니다.",
+        "WorkoutController.getWorkoutOfTheDayCountByPlaceId"
+      );
 
       const count =
         await this.workoutOfTheDayService.getWorkoutOfTheDayCountByPlaceId(
@@ -343,32 +329,27 @@ export class WorkoutController {
    */
   public getMonthlyWorkoutDates = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const nicknameResult = UserNicknameSchema.safeParse(req.params.nickname);
-      if (!nicknameResult.success) {
-        this.handleValidationError(
-          nicknameResult.error,
-          "getMonthlyWorkoutDates"
-        );
-      }
-      const nickname = nicknameResult.data;
+      const nickname = ValidationUtil.validatePathParam(
+        req,
+        "nickname",
+        UserNicknameSchema,
+        "잘못된 사용자 닉네임입니다.",
+        "WorkoutController.getMonthlyWorkoutDates"
+      );
 
-      const { year, month } = req.query;
-
-      // 월별 데이터 유효성 검사 (Zod 스키마가 string -> number 변환 처리 가정)
-      const result = MonthlyWorkoutSchema.safeParse({ year, month });
-
-      if (!result.success) {
-        this.handleValidationError(result.error, "getMonthlyWorkoutDates");
-      }
-
-      const { year: validYear, month: validMonth }: MonthlyWorkoutDTO =
-        result.data;
+      // 월별 데이터 유효성 검사
+      const { year, month }: MonthlyWorkoutDTO = ValidationUtil.validateQuery(
+        req,
+        MonthlyWorkoutSchema,
+        "잘못된 년/월 형식입니다.",
+        "WorkoutController.getMonthlyWorkoutDates"
+      );
 
       const monthlyData =
         await this.workoutCalendarService.getMonthlyWorkoutDates(
           nickname,
-          validYear,
-          validMonth
+          year,
+          month
         );
 
       res.status(200).json(monthlyData);

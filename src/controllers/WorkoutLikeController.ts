@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { WorkoutLikeService } from "../services/WorkoutLikeService";
 import { CustomError } from "../utils/customError";
 import { SeqSchema } from "../schema/BaseSchema";
-import { ZodError } from "zod";
 import {
   WorkoutLikeResponseDTO,
   WorkoutLikeStatusDTO,
@@ -10,6 +9,7 @@ import {
 } from "../dtos/WorkoutLikeDTO";
 import asyncHandler from "express-async-handler";
 import { ControllerUtil } from "../utils/controllerUtil";
+import { ValidationUtil } from "../utils/validationUtil";
 
 /**
  * 워크아웃 좋아요 관련 컨트롤러
@@ -27,42 +27,24 @@ export class WorkoutLikeController {
   }
 
   /**
-   * 유효성 검사 오류 처리 헬퍼 메서드
-   */
-  private handleValidationError(error: ZodError, context: string): never {
-    throw new CustomError(
-      error.errors[0].message,
-      400,
-      `WorkoutLikeController.${context}`,
-      error.errors.map((err) => ({
-        message: err.message,
-        path: err.path.map((p) => p.toString()),
-      }))
-    );
-  }
-
-  /**
    * 운동 좋아요 토글 - 좋아요 추가 또는 취소
    */
   public toggleWorkoutLike = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-      const workoutOfTheDaySeqResult = SeqSchema.safeParse(
-        req.params.workoutOfTheDaySeq
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "WorkoutLikeController.toggleWorkoutLike"
       );
-
-      if (!workoutOfTheDaySeqResult.success) {
-        this.handleValidationError(
-          workoutOfTheDaySeqResult.error,
-          "toggleWorkoutLike"
-        );
-      }
 
       const result: WorkoutLikeResponseDTO =
         await this.workoutLikeService.toggleWorkoutLike(
           userSeq,
-          workoutOfTheDaySeqResult.data
+          workoutOfTheDaySeq
         );
 
       res.status(200).json(result);
@@ -76,20 +58,17 @@ export class WorkoutLikeController {
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
 
-      const workoutOfTheDaySeqResult = SeqSchema.safeParse(
-        req.params.workoutOfTheDaySeq
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "WorkoutLikeController.getWorkoutLikeStatus"
       );
-
-      if (!workoutOfTheDaySeqResult.success) {
-        this.handleValidationError(
-          workoutOfTheDaySeqResult.error,
-          "getWorkoutLikeStatus"
-        );
-      }
 
       const isLiked = await this.workoutLikeService.getWorkoutLikeStatus(
         userSeq,
-        workoutOfTheDaySeqResult.data
+        workoutOfTheDaySeq
       );
 
       const response: WorkoutLikeStatusDTO = { isLiked };
@@ -102,19 +81,16 @@ export class WorkoutLikeController {
    */
   public getWorkoutLikeCount = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const workoutOfTheDaySeqResult = SeqSchema.safeParse(
-        req.params.workoutOfTheDaySeq
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "WorkoutLikeController.getWorkoutLikeCount"
       );
 
-      if (!workoutOfTheDaySeqResult.success) {
-        this.handleValidationError(
-          workoutOfTheDaySeqResult.error,
-          "getWorkoutLikeCount"
-        );
-      }
-
       const likeCount = await this.workoutLikeService.getWorkoutLikeCount(
-        workoutOfTheDaySeqResult.data
+        workoutOfTheDaySeq
       );
 
       const response: WorkoutLikeCountDTO = { likeCount };

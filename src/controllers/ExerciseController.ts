@@ -1,30 +1,14 @@
 import { Request, Response } from "express";
 import { ExerciseService } from "../services/ExerciseService";
 import asyncHandler from "express-async-handler";
-import { CustomError } from "../utils/customError";
 import { ExerciseSeqSchema } from "../schema/ExerciseSchema";
-import { ZodError } from "zod";
+import { ValidationUtil } from "../utils/validationUtil";
 
 export class ExerciseController {
   private exerciseService: ExerciseService;
 
   constructor() {
     this.exerciseService = new ExerciseService();
-  }
-
-  /**
-   * Zod 유효성 검사 에러 처리 헬퍼 메서드
-   */
-  private handleValidationError(error: ZodError, context: string): never {
-    throw new CustomError(
-      "유효성 검사 실패",
-      400,
-      `ExerciseController.${context}`,
-      error.errors.map((err) => ({
-        message: err.message,
-        path: err.path.map((p) => p.toString()),
-      }))
-    );
   }
 
   /**
@@ -59,14 +43,18 @@ export class ExerciseController {
    */
   public getExerciseById = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      // Zod 유효성 검사
-      const result = ExerciseSeqSchema.safeParse(req.params.exerciseSeq);
-      if (!result.success) {
-        this.handleValidationError(result.error, "getExerciseById");
-      }
-      const exerciseSeq = result.data;
+      // Zod 유효성 검사 (ValidationUtil 사용)
+      const exerciseSeq = ValidationUtil.validatePathParam(
+        req,
+        "exerciseSeq",
+        ExerciseSeqSchema,
+        "잘못된 운동 ID입니다.",
+        "ExerciseController.getExerciseById"
+      );
 
-      const exercise = await this.exerciseService.findExerciseById(exerciseSeq);
+      const exercise = await this.exerciseService.findExerciseById(
+        Number(exerciseSeq)
+      );
 
       res.status(200).json(exercise);
     }

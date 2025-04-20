@@ -5,35 +5,20 @@ import { CustomError } from "../utils/customError";
 import { LoginSchema } from "../schema/UserSchema";
 import { LoginDTO } from "../dtos/UserDTO";
 import { ControllerUtil } from "../utils/controllerUtil";
-import { ZodError } from "zod";
+import { ValidationUtil } from "../utils/validationUtil";
 
 export class UserController {
   private userService = new UserService();
 
-  /**
-   * Zod 유효성 검사 에러 처리 헬퍼 메서드
-   */
-  private handleZodError(error: ZodError, context: string): never {
-    throw new CustomError(
-      error.errors[0].message, // Zod 에러 메시지 사용
-      400,
-      `UserController.${context}`,
-      error.errors.map((err) => ({
-        // 상세 에러 정보 포함
-        message: err.message,
-        path: err.path.map((p) => p.toString()),
-      }))
-    );
-  }
-
   // POST /users/login
   public loginUser = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const result = LoginSchema.safeParse(req.body);
-      if (!result.success) {
-        this.handleZodError(result.error, "loginUser");
-      }
-      const loginDTO: LoginDTO = result.data;
+      const loginDTO: LoginDTO = ValidationUtil.validateBody(
+        req,
+        LoginSchema,
+        "로그인 정보가 유효하지 않습니다.",
+        "UserController.loginUser"
+      );
 
       const { token, userDTO: responseUserDTO } =
         await this.userService.loginUser(loginDTO);

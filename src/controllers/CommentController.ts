@@ -1,17 +1,17 @@
 import { Request, Response } from "express";
 import asyncHandler from "express-async-handler";
-import { CustomError } from "../utils/customError";
 import { ControllerUtil } from "../utils/controllerUtil";
 import { CommentService } from "../services/CommentService";
 import { CommentLikeService } from "../services/CommentLikeService";
 import { SeqSchema } from "../schema/BaseSchema";
-import { ZodError } from "zod";
+import { ValidationUtil } from "../utils/validationUtil";
 import {
   CreateCommentSchema,
   UpdateCommentSchema,
   CommentListQuerySchema,
   RepliesQuerySchema,
 } from "../schema/CommentSchema";
+import { z } from "zod";
 
 export class CommentController {
   private commentService: CommentService;
@@ -23,35 +23,27 @@ export class CommentController {
   }
 
   /**
-   * 공통 에러 처리 헬퍼 메서드
-   */
-  private handleValidationError(error: ZodError, context: string): never {
-    throw new CustomError(
-      "유효성 검사 실패",
-      400,
-      `CommentController.${context}`,
-      error.errors.map((err) => ({
-        message: err.message,
-        path: err.path.map((p) => p.toString()),
-      }))
-    );
-  }
-
-  /**
    * 댓글 생성
    */
   public createComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "CommentController.createComment"
+      );
 
       // 유효성 검사
-      const validationResult = CreateCommentSchema.safeParse(req.body);
-      if (!validationResult.success) {
-        this.handleValidationError(validationResult.error, "createComment");
-      }
+      const commentData = ValidationUtil.validateBody(
+        req,
+        CreateCommentSchema,
+        "유효성 검사 실패",
+        "CommentController.createComment"
+      );
 
-      const commentData = validationResult.data;
       const createdComment = await this.commentService.createComment(
         userSeq,
         workoutOfTheDaySeq,
@@ -70,15 +62,23 @@ export class CommentController {
    */
   public getComments = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const workoutOfTheDaySeq = SeqSchema.parse(req.params.workoutOfTheDaySeq);
+      const workoutOfTheDaySeq = ValidationUtil.validatePathParam(
+        req,
+        "workoutOfTheDaySeq",
+        SeqSchema,
+        "잘못된 워크아웃 ID입니다.",
+        "CommentController.getComments"
+      );
 
       // 쿼리 파라미터 파싱
-      const queryResult = CommentListQuerySchema.safeParse(req.query);
-      if (!queryResult.success) {
-        this.handleValidationError(queryResult.error, "getComments");
-      }
+      const queryParams = ValidationUtil.validateQuery(
+        req,
+        CommentListQuerySchema,
+        "유효성 검사 실패",
+        "CommentController.getComments"
+      );
 
-      const { page, limit } = queryResult.data;
+      const { page, limit } = queryParams;
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
       const comments = await this.commentService.getCommentsWithLikes(
@@ -97,15 +97,23 @@ export class CommentController {
    */
   public getReplies = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const commentSeq = SeqSchema.parse(req.params.commentSeq);
-      const queryParams = RepliesQuerySchema.safeParse(req.query);
+      const commentSeq = ValidationUtil.validatePathParam(
+        req,
+        "commentSeq",
+        SeqSchema,
+        "잘못된 댓글 ID입니다.",
+        "CommentController.getReplies"
+      );
 
-      if (!queryParams.success) {
-        this.handleValidationError(queryParams.error, "getReplies");
-      }
+      const queryParams = ValidationUtil.validateQuery(
+        req,
+        RepliesQuerySchema,
+        "유효성 검사 실패",
+        "CommentController.getReplies"
+      );
 
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
-      const { cursor, limit } = queryParams.data;
+      const { cursor, limit } = queryParams;
 
       const result = await this.commentService.getReplies(
         commentSeq,
@@ -123,7 +131,13 @@ export class CommentController {
    */
   public getComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const commentSeq = SeqSchema.parse(req.params.commentSeq);
+      const commentSeq = ValidationUtil.validatePathParam(
+        req,
+        "commentSeq",
+        SeqSchema,
+        "잘못된 댓글 ID입니다.",
+        "CommentController.getComment"
+      );
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
       const comment = await this.commentService.getCommentWithReplies(
@@ -140,8 +154,22 @@ export class CommentController {
    */
   public getParentCommentWithAllReplies = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
-      const parentCommentSeq = SeqSchema.parse(req.params.parentCommentSeq);
-      const targetReplySeq = SeqSchema.parse(req.query.targetReplySeq);
+      const parentCommentSeq = ValidationUtil.validatePathParam(
+        req,
+        "parentCommentSeq",
+        SeqSchema,
+        "잘못된 부모 댓글 ID입니다.",
+        "CommentController.getParentCommentWithAllReplies"
+      );
+
+      // 쿼리 파라미터에서 targetReplySeq 직접 파싱
+      const targetReplySeq = ValidationUtil.validateCustom(
+        { seq: Number(req.query.targetReplySeq) },
+        z.object({ seq: SeqSchema }),
+        "잘못된 대상 댓글 ID입니다.",
+        "CommentController.getParentCommentWithAllReplies"
+      ).seq;
+
       const userSeq = ControllerUtil.getAuthenticatedUserIdOptional(req);
 
       const comment = await this.commentService.getParentCommentWithAllReplies(
@@ -160,15 +188,22 @@ export class CommentController {
   public updateComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      const commentSeq = SeqSchema.parse(req.params.commentSeq);
+      const commentSeq = ValidationUtil.validatePathParam(
+        req,
+        "commentSeq",
+        SeqSchema,
+        "잘못된 댓글 ID입니다.",
+        "CommentController.updateComment"
+      );
 
       // 유효성 검사
-      const validationResult = UpdateCommentSchema.safeParse(req.body);
-      if (!validationResult.success) {
-        this.handleValidationError(validationResult.error, "updateComment");
-      }
+      const updateData = ValidationUtil.validateBody(
+        req,
+        UpdateCommentSchema,
+        "유효성 검사 실패",
+        "CommentController.updateComment"
+      );
 
-      const updateData = validationResult.data;
       const updatedComment = await this.commentService.updateComment(
         userSeq,
         commentSeq,
@@ -188,7 +223,13 @@ export class CommentController {
   public deleteComment = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      const commentSeq = SeqSchema.parse(req.params.commentSeq);
+      const commentSeq = ValidationUtil.validatePathParam(
+        req,
+        "commentSeq",
+        SeqSchema,
+        "잘못된 댓글 ID입니다.",
+        "CommentController.deleteComment"
+      );
 
       await this.commentService.deleteComment(userSeq, commentSeq);
 
@@ -204,7 +245,13 @@ export class CommentController {
   public toggleCommentLike = asyncHandler(
     async (req: Request, res: Response): Promise<void> => {
       const userSeq = ControllerUtil.getAuthenticatedUserId(req);
-      const commentSeq = SeqSchema.parse(req.params.commentSeq);
+      const commentSeq = ValidationUtil.validatePathParam(
+        req,
+        "commentSeq",
+        SeqSchema,
+        "잘못된 댓글 ID입니다.",
+        "CommentController.toggleCommentLike"
+      );
 
       const result = await this.commentLikeService.toggleCommentLike(
         userSeq,
